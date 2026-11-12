@@ -32,7 +32,8 @@ The dependency checker resolves every `require` and enforces this table. A
 | -------------------- | --------------------------------------------------- | -------------------------------------- |
 | `shared/*`           | `shared/*`                                          | `server/*`, `client/*`, `tests/*`      |
 | `client/*`           | `client/*`, `shared/*`                              | `server/*`, `tests/*`                  |
-| `server/Services/*`  | `server/Services/*` (acyclic), `Persistence`, `Content`, `shared/*` | `server/Network/*`, `client/*`, `tests/*` |
+| `server/Config/*`    | `server/Config/*`, `shared/*`                       | every other server area                |
+| `server/Services/*`  | `server/Services/*` (acyclic), `Persistence`, `Content`, `Config`, `shared/*` | `server/Network/*`, `client/*`, `tests/*` |
 | `server/Network/*`   | `server/Network/*`, `server/Services/*`, `shared/*` | `client/*`, `tests/*`                  |
 | `server/Persistence/*` | `server/Persistence/*`, `shared/*`                | `Services`, `Network`, `client/*`      |
 | `server/Content/*`   | `server/Content/*`, `shared/*`                      | `Services`, `Network`, `client/*`      |
@@ -123,6 +124,16 @@ depend on earlier stages.
 Within stage 3, order is: Combat → Cant → Verse → Burden → Quest → Waymark →
 Party → Travel → Descent. Later services may depend on earlier ones, not the
 reverse. A new service is added to this list by the task that creates it.
+
+### Configuration and feature flags
+
+`src/server/Config` (BM-006) is built once in stage 1 from the detected
+environment (`test`, `studio`, `development`, `production`) plus checked-in
+defaults, then frozen and injected. Flags are defined in `Config/Flags.luau`
+with an owning task; experimental flags default to off everywhere and cannot
+be enabled in production by an override, only by a reviewed edit to the
+definition. The `test` environment is read-only with its own DataStore scope.
+Clients never send or set flags; they learn what is on through server state.
 
 ## 6. Server-authority rules
 
