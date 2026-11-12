@@ -1,0 +1,67 @@
+# Continuous integration (BM-010).
+#
+# Runs the same checks as `lune run tools/check-all.luau`, with the toolchain
+# pinned by rokit.toml. This workflow uses no secrets and no credentials of
+# any kind; nothing it does can reach a Roblox DataStore or publish a place.
+# Branch protection on `main` must require the `checks` job (see docs/ci.md).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ROKIT_VERSION: 1.2.0
+  ROKIT_SHA256: 951a7f3ec3d2a5e021fd1867d32f69f010ee4c2927f644b759578afc59c65fc0
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rokit (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o rokit.zip \
+            "https://github.com/rojo-rbx/rokit/releases/download/v${ROKIT_VERSION}/rokit-${ROKIT_VERSION}-linux-x86_64.zip"
+          echo "${ROKIT_SHA256}  rokit.zip" | sha256sum -c -
+          unzip -q rokit.zip -d rokit-bin
+          ./rokit-bin/rokit self-install
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned tools
+        run: rokit install --no-trust-check
+
+      - name: Print tool versions
+        run: |
+          rojo --version
+          stylua --version
+          selene --version
+          luau-lsp --version
+          lune --version
+
+      - name: Run all checks
+        run: lune run tools/check-all.luau
+
+      - name: Upload built place
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackMeridian.rbxl
+          path: BlackMeridian.rbxl
+          retention-days: 7

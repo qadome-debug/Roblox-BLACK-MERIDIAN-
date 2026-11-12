@@ -67,7 +67,13 @@ Pressing Play must show both lines in the Output window, with no errors:
 
 ## Checks
 
-Run all four before committing. Each must exit with no errors.
+Everything CI runs, in one command (see `docs/ci.md`):
+
+```bash
+lune run tools/check-all.luau
+```
+
+The individual checks follow. Each must exit with no errors.
 
 Formatting:
 
@@ -118,7 +124,7 @@ Scripts under `tools/` are type-checked separately, because they run in Lune
 rather than Roblox:
 
 ```bash
-luau-lsp analyze --platform standard tools/check-deps.luau tools/check-contracts.luau tools/check-tests.luau tools/run-tests.luau tools/host
+luau-lsp analyze --platform standard tools/check-all.luau tools/check-deps.luau tools/check-contracts.luau tools/check-tests.luau tools/run-tests.luau tools/host
 ```
 
 Tests:
@@ -159,6 +165,7 @@ lune run tools/run-tests.luau --root tools/fixtures/tests/failing
 | `docs/architecture.md`        | Service ownership, layer rules, dependency injection, authority |
 | `docs/task-log.md`            | Which tasks are done, with evidence, and current blockers       |
 | `docs/content-registry.md`    | Canonical content ID rules and what the registry validates     |
+| `docs/ci.md`                  | What CI runs, its security posture, and branch protection      |
 
 ## Configuration files
 

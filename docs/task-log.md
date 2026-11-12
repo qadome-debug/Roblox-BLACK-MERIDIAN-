@@ -15,8 +15,14 @@ when its code compiled.
 | BM-007 | Done   | 2026-11-12 | `shared/Sim/{Clock,Rng,FixedStep}`; 13 tests including a seeded simulation replayed to an identical trace and a pinned known sequence |
 | BM-008 | Done   | 2026-11-12 | `server/Logging/{Logger,Redact,Telemetry}`; 13 tests cover event schema, secret-key redaction, table/profile dropping, bounds, context binding, sink isolation and telemetry counts |
 | BM-009 | Done   | 2026-11-12 | `tests/Support/{Suite,Assert,FakeDataStoreService}` with fault injection; 11 harness tests; `tools/check-tests.luau` forbids live services in tests; failing fixture makes the runner exit 1 |
+| BM-010 | Done*  | 2026-11-12 | `.github/workflows/ci.yml` runs `tools/check-all.luau` (12 steps, all pass locally) with pinned, checksum-verified tools and no secrets. *Branch protection requiring the `checks` job must be enabled on GitHub by the repository owner (docs/ci.md); until then a red check does not block a merge |
 
 ## Blockers
+
+- **Branch protection (BM-010).** Needs the repository owner to require the
+  `checks` status on `main` in GitHub settings; steps in `docs/ci.md`. The
+  workflow itself has not yet run on GitHub because the repository has not
+  been pushed from this machine.
 
 - **Canonical content inventory.** The established list of Orthea regions,
   quests, Cants, Verses, Burdens, Waymarks, bosses, and Descents is not in
