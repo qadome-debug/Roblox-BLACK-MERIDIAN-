@@ -8,6 +8,7 @@ when its code compiled.
 | ------ | ------ | ---------- | ------------------------------------------------------------------------ |
 | BM-001 | Done   | 2026-11-12 | `rojo build` clean; both bootstraps printed in a Studio playtest         |
 | BM-002 | Done   | 2026-11-12 | Clean Rokit install on Windows; format, lint, type check, build all pass |
+| BM-003 | Done   | 2026-11-12 | `docs/architecture.md`; `tools/check-deps.luau` self-test passes on clean, cycle, layer and unresolved fixtures; repo check passes |
 
 ## Blockers
 
