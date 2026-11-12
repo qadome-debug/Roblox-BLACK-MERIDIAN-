@@ -171,6 +171,28 @@ through the same path; BM-127 attaches the analytics sink.
 Direct `print`/`warn` from services, adapters, and persistence code is not
 allowed; the console sink is the one place that prints.
 
+### Networking modules
+
+`src/server/Network` implements the plan's validation sequence (3.2) as
+separate, individually tested modules that the dispatcher (BM-018) calls in
+order:
+
+| Step | Module         | Rejects with                          |
+| ---- | -------------- | ------------------------------------- |
+| 1    | `Envelope`     | `BAD_ENVELOPE`, `UNKNOWN_ACTION`      |
+| 2    | `Session`      | `NOT_READY`, `STALE_EPOCH`            |
+| 3    | `Replay`       | `REPLAY` (or the cached result)       |
+| 4    | `RateLimiter`  | `RATE_LIMITED`                        |
+| 5    | `Validators/*` | `BAD_PAYLOAD`                         |
+| 6    | `Auth` helpers | `UNAUTHORIZED`                        |
+| 7–8  | the adapter    | `STALE_STATE`, `REJECTED`, `INTERNAL` |
+
+`Remotes` creates the only remotes that exist and audits the place for
+others. Sessions are keyed by the Player object; the epoch issued at join is
+good only for `ClientHello`, which rotates it. Replay state and rate buckets
+are per session and bounded, and none of it is durable: receipts (Phase B)
+carry idempotency across crashes and reconnects.
+
 ## 6. Server-authority rules
 
 1. The server obtains player identity from the `Player` object delivered by

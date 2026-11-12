@@ -21,6 +21,11 @@ when its code compiled.
 | BM-012 | Done   | 2026-11-12 | `Network/Envelope` parses the versioned envelope with bounded payload structure and per-class size limits; 12 tests plus a 6000-case fuzz run never throws or accepts a malformed envelope |
 | BM-013 | Done   | 2026-11-12 | `Network/Validators/Schema` strict object validator; QuestChoice, TravelReady and ClientHello validators; boundary tests plus 13,500 fuzz cases with no crash and no malformed acceptance |
 
+| BM-014 | Done   | 2026-11-12 | `Network/Auth` contexts take identity from the Player object and session; `requireOwner`/`requirePermission`/`requireMember` deny with UNAUTHORIZED and log security events (4 tests) |
+| BM-015 | Done   | 2026-11-12 | `Network/RateLimiter` per-player class and envelope token buckets; 7 tests cover burst, refill, sustained flood, envelope cap, no-cost rejection and cross-player fairness |
+| BM-016 | Done   | 2026-11-12 | `Network/Replay` sequence tracking, request-ID fingerprint dedup, bounded 10-minute result cache; 7 tests cover duplicate, in-flight, conflict, stale, reordered, expiry, cap and cross-session cases |
+| BM-017 | Done   | 2026-11-12 | `Network/Session` per-Player sessions with initial and rotated epochs, hello timeout, once-only handshake; 7 tests including reconnect and cross-player epoch rejection |
+
 ## Blockers
 
 - **Branch protection (BM-010).** Needs the repository owner to require the
