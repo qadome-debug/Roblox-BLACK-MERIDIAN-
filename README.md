@@ -99,6 +99,12 @@ Module dependencies (layer rules and cycles, see `docs/architecture.md`):
 lune run tools/check-deps.luau
 ```
 
+Contract hygiene (no `any` in `src/shared/Types` or `src/shared/Contracts`):
+
+```bash
+lune run tools/check-contracts.luau
+```
+
 Build:
 
 ```bash
@@ -109,7 +115,7 @@ Scripts under `tools/` are type-checked separately, because they run in Lune
 rather than Roblox:
 
 ```bash
-luau-lsp analyze --platform standard tools/check-deps.luau tools/run-tests.luau tools/host
+luau-lsp analyze --platform standard tools/check-deps.luau tools/check-contracts.luau tools/run-tests.luau tools/host
 ```
 
 Tests:
