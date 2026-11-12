@@ -109,11 +109,21 @@ Scripts under `tools/` are type-checked separately, because they run in Lune
 rather than Roblox:
 
 ```bash
-luau-lsp analyze --platform standard tools/check-deps.luau
+luau-lsp analyze --platform standard tools/check-deps.luau tools/run-tests.luau tools/host
 ```
 
-Tests will run through Lune (`lune run <script>`). The test harness itself is
-BM-009, and wiring these checks into CI is BM-010.
+Tests:
+
+```bash
+lune run tools/run-tests.luau
+```
+
+Tests live in `src/tests/**/*.test.luau` and run under Lune, outside Studio.
+`tools/host/` builds a virtual instance tree from `src/` so test code and the
+modules it requires use the same instance paths they use in Roblox. Only pure
+Luau logic runs this way; code that needs engine APIs is tested in Studio.
+The fuller harness (fakes, fault injection) is BM-009; wiring every check into
+CI is BM-010.
 
 ## Documents
 
@@ -122,6 +132,7 @@ BM-009, and wiring these checks into CI is BM-010.
 | `docs/technical-plan-2.0.md`  | The 136-task engineering plan this repository follows          |
 | `docs/architecture.md`        | Service ownership, layer rules, dependency injection, authority |
 | `docs/task-log.md`            | Which tasks are done, with evidence, and current blockers       |
+| `docs/content-registry.md`    | Canonical content ID rules and what the registry validates     |
 
 ## Configuration files
 
