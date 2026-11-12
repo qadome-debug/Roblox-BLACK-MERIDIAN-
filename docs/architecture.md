@@ -33,6 +33,7 @@ The dependency checker resolves every `require` and enforces this table. A
 | `shared/*`           | `shared/*`                                          | `server/*`, `client/*`, `tests/*`      |
 | `client/*`           | `client/*`, `shared/*`                              | `server/*`, `tests/*`                  |
 | `server/Config/*`    | `server/Config/*`, `shared/*`                       | every other server area                |
+| `server/Logging/*`   | `server/Logging/*`, `shared/*`                      | every other server area                |
 | `server/Services/*`  | `server/Services/*` (acyclic), `Persistence`, `Content`, `Config`, `shared/*` | `server/Network/*`, `client/*`, `tests/*` |
 | `server/Network/*`   | `server/Network/*`, `server/Services/*`, `shared/*` | `client/*`, `tests/*`                  |
 | `server/Persistence/*` | `server/Persistence/*`, `shared/*`                | `Services`, `Network`, `client/*`      |
@@ -152,6 +153,23 @@ gameplay code may use, and both arrive by injection:
 A timestamp or random value inside a client payload is never used for an
 authoritative decision. `os.time`, `os.clock`, `tick`, `time`, `math.random`
 and `Random.new` are not called from services; the injected Clock and Rng are.
+
+### Logging and telemetry
+
+`src/server/Logging` (BM-008) is the only way server code writes to the
+Output or to analytics. A `Logger` is built in stage 1 and injected; services
+derive request- or player-scoped loggers with `logger:with({ correlationId,
+playerId })`, so every line of one operation shares an ID. Events are typed:
+level, category (`lifecycle`, `config`, `network`, `security`, `persistence`,
+`reward`, `gameplay`, `telemetry`), a snake_case event name, and flat fields.
+`Redact` sanitizes every field: only scalars survive (a profile or payload
+table becomes `[dropped:table]`), keys that look like secrets are redacted,
+strings are truncated, and the field count is capped. The logger never
+throws and isolates failing sinks. `Telemetry` reports measurable events
+through the same path; BM-127 attaches the analytics sink.
+
+Direct `print`/`warn` from services, adapters, and persistence code is not
+allowed; the console sink is the one place that prints.
 
 ## 6. Server-authority rules
 

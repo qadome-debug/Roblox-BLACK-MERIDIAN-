@@ -61,7 +61,7 @@ in Studio without rebuilding.
 Pressing Play must show both lines in the Output window, with no errors:
 
 ```
-[BlackMeridian] Server bootstrap loaded
+[BlackMeridian] INFO lifecycle server_bootstrap_loaded correlationId=... environment=studio readOnly=false scope=studio
 [BlackMeridian] Client bootstrap loaded
 ```
 

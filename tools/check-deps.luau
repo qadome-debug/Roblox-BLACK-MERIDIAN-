@@ -191,6 +191,12 @@ local function layerViolation(from: { string }, to: { string }): string?
 		end
 		return nil
 	end
+	if fromArea == "Logging" then
+		if toArea ~= "Logging" then
+			return "Logging must not depend on " .. tostring(toArea)
+		end
+		return nil
+	end
 	if
 		(fromArea == "Persistence" or fromArea == "Content")
 		and (toArea == "Services" or toArea == "Network")
@@ -326,7 +332,7 @@ local function selfTest(): boolean
 	local expectations: { { name: string, kinds: { [string]: number } } } = {
 		{ name = "clean", kinds = {} },
 		{ name = "cycle", kinds = { cycle = 1 } },
-		{ name = "layer", kinds = { layer = 4 } },
+		{ name = "layer", kinds = { layer = 5 } },
 		{ name = "unresolved", kinds = { unresolved = 3 } },
 	}
 	local passed = true
