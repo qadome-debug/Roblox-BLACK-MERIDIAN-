@@ -135,6 +135,24 @@ be enabled in production by an override, only by a reviewed edit to the
 definition. The `test` environment is read-only with its own DataStore scope.
 Clients never send or set flags; they learn what is on through server state.
 
+### Time and randomness
+
+`src/shared/Sim` (BM-007) provides the only sources of time and randomness
+gameplay code may use, and both arrive by injection:
+
+- `Clock`: `now()` is monotonic seconds for durations and simulation;
+  `wallTime()` is Unix seconds for lease expiry and receipts. Production uses
+  `Clock.real()`; tests use `Clock.manual()` and advance it explicitly.
+- `Rng`: a seeded xoshiro128** generator in pure 32-bit arithmetic, so a seed
+  replays identically on every platform. Each subsystem forks its own stream
+  by label. Gameplay seeds are chosen by the server.
+- `FixedStep`: turns frame time into whole fixed simulation steps for the
+  authoritative combat loop (BM-054).
+
+A timestamp or random value inside a client payload is never used for an
+authoritative decision. `os.time`, `os.clock`, `tick`, `time`, `math.random`
+and `Random.new` are not called from services; the injected Clock and Rng are.
+
 ## 6. Server-authority rules
 
 1. The server obtains player identity from the `Player` object delivered by
