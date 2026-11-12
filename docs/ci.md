@@ -18,6 +18,7 @@ before committing. The steps, in order:
 | deps self-test            | `lune run tools/check-deps.luau --self-test`           | the checker misses a planted cycle/violation |
 | deps                      | `lune run tools/check-deps.luau`                       | forbidden layer dependency or cycle          |
 | contracts                 | `lune run tools/check-contracts.luau`                  | `any` in Types or Contracts                  |
+| remotes                   | `lune run tools/check-remotes.luau`                    | a remote is created outside `Network/Remotes.luau` |
 | test isolation            | `lune run tools/check-tests.luau`                      | a test names a live service or wall clock    |
 | tests                     | `lune run tools/run-tests.luau`                        | any test fails                               |
 | failing fixture           | `lune run tools/run-tests.luau --root tools/fixtures/tests/failing` | the runner does NOT fail (negative fixture) |

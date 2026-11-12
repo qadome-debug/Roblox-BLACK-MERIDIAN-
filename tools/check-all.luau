@@ -41,6 +41,7 @@ local ANALYZE_TOOLS = {
 	"tools/check-all.luau",
 	"tools/check-deps.luau",
 	"tools/check-contracts.luau",
+	"tools/check-remotes.luau",
 	"tools/check-tests.luau",
 	"tools/run-tests.luau",
 	"tools/host",
@@ -63,6 +64,7 @@ local steps: { Step } = {
 	},
 	{ name = "deps", program = "lune", args = { "run", "tools/check-deps.luau" } },
 	{ name = "contracts", program = "lune", args = { "run", "tools/check-contracts.luau" } },
+	{ name = "remotes", program = "lune", args = { "run", "tools/check-remotes.luau" } },
 	{ name = "test isolation", program = "lune", args = { "run", "tools/check-tests.luau" } },
 	{ name = "tests", program = "lune", args = { "run", "tools/run-tests.luau" } },
 	{

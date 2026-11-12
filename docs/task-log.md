@@ -17,6 +17,10 @@ when its code compiled.
 | BM-009 | Done   | 2026-11-12 | `tests/Support/{Suite,Assert,FakeDataStoreService}` with fault injection; 11 harness tests; `tools/check-tests.luau` forbids live services in tests; failing fixture makes the runner exit 1 |
 | BM-010 | Done*  | 2026-11-12 | `.github/workflows/ci.yml` runs `tools/check-all.luau` (12 steps, all pass locally) with pinned, checksum-verified tools and no secrets. *Branch protection requiring the `checks` job must be enabled on GitHub by the repository owner (docs/ci.md); until then a red check does not block a merge |
 
+| BM-011 | Done   | 2026-11-12 | `Network/Remotes` creates only the six allowlisted RemoteEvents; `audit` finds stray, misplaced, duplicate and wrong-class remotes (5 tests); `tools/check-remotes.luau` forbids remote creation elsewhere |
+| BM-012 | Done   | 2026-11-12 | `Network/Envelope` parses the versioned envelope with bounded payload structure and per-class size limits; 12 tests plus a 6000-case fuzz run never throws or accepts a malformed envelope |
+| BM-013 | Done   | 2026-11-12 | `Network/Validators/Schema` strict object validator; QuestChoice, TravelReady and ClientHello validators; boundary tests plus 13,500 fuzz cases with no crash and no malformed acceptance |
+
 ## Blockers
 
 - **Branch protection (BM-010).** Needs the repository owner to require the
