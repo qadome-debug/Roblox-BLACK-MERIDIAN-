@@ -1,0 +1,6 @@
+std = "roblox"
+
+# Lint against the roblox.yml committed in this repository, not whatever API
+# dump is current on the day. Refresh it deliberately with
+# `selene update-roblox-std` and commit the result.
+roblox-std-source = "pinned"

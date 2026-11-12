@@ -1,0 +1,12 @@
+# Pinned toolchain for Black Meridian (BM-002).
+#
+# Install everything with `rokit install`. Every tool is pinned to an exact
+# version. Change a version, or add a tool, only through a reviewed commit:
+# these are executables that run on developer machines and in CI.
+
+[tools]
+rojo = "rojo-rbx/rojo@7.7.1"
+stylua = "JohnnyMorganz/StyLua@2.6.0"
+selene = "Kampfkarren/selene@0.32.0"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.70.1"
+lune = "lune-org/lune@0.11.1"

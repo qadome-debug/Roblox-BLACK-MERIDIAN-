@@ -1,0 +1,8 @@
+# Keep line endings identical on every machine so formatting checks agree.
+* text=auto eol=lf
+*.rbxl binary
+*.rbxm binary
+
+# Generated snapshots, committed so checks are reproducible offline.
+roblox.yml linguist-generated
+globalTypes.d.luau linguist-generated
