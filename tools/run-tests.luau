@@ -17,13 +17,16 @@ type Case = { name: string, run: () -> () }
 
 local args = process.args
 local filter: string? = nil
+local root = "."
 for i, arg in args do
 	if arg == "--filter" then
 		filter = args[i + 1]
+	elseif arg == "--root" then
+		root = args[i + 1] or "."
 	end
 end
 
-local loader = Loader.forProject(".")
+local loader = Loader.forProject(root)
 
 local testFiles = {}
 for rel, node in loader.tree.byFile do

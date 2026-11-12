@@ -83,10 +83,13 @@ Linting:
 selene src
 ```
 
-Type checking, which needs a fresh sourcemap first:
+Type checking, which needs a fresh sourcemap first. The sourcemap comes from
+`tests.project.json`, which is `default.project.json` plus `src/tests`
+mounted at `ServerStorage.Tests`, so test code type-checks too; the shipped
+place is still built from `default.project.json` and never contains tests.
 
 ```bash
-rojo sourcemap default.project.json --output sourcemap.json
+rojo sourcemap tests.project.json --output sourcemap.json
 ```
 
 ```bash
@@ -115,7 +118,7 @@ Scripts under `tools/` are type-checked separately, because they run in Lune
 rather than Roblox:
 
 ```bash
-luau-lsp analyze --platform standard tools/check-deps.luau tools/check-contracts.luau tools/run-tests.luau tools/host
+luau-lsp analyze --platform standard tools/check-deps.luau tools/check-contracts.luau tools/check-tests.luau tools/run-tests.luau tools/host
 ```
 
 Tests:
@@ -124,12 +127,29 @@ Tests:
 lune run tools/run-tests.luau
 ```
 
-Tests live in `src/tests/**/*.test.luau` and run under Lune, outside Studio.
-`tools/host/` builds a virtual instance tree from `src/` so test code and the
-modules it requires use the same instance paths they use in Roblox. Only pure
-Luau logic runs this way; code that needs engine APIs is tested in Studio.
-The fuller harness (fakes, fault injection) is BM-009; wiring every check into
-CI is BM-010.
+Tests live in `src/tests/<Unit|Integration|Security|Persistence|Content>/*.test.luau`
+and run under Lune, outside Studio. `tools/host/` builds a virtual instance
+tree from `src/` so test code and the modules it requires use the same
+instance paths they use in Roblox. Only pure Luau logic runs this way; code
+that needs engine APIs is tested in Studio.
+
+`src/tests/Support/` is the harness: `Suite` gives every case a fresh
+environment (manual clock, seeded RNG, capturing logger, fake DataStore
+service), `Assert` has readable assertions, and `FakeDataStoreService`
+supports fault injection (`error`, `timeout`, `lostResponse`, `budget`,
+`delay`). Tests cannot reach a real DataStore, HTTP, or wall clock:
+
+```bash
+lune run tools/check-tests.luau
+```
+
+A deliberately failing fixture proves the runner reports failure:
+
+```bash
+lune run tools/run-tests.luau --root tools/fixtures/tests/failing
+```
+
+(expected to exit 1). Wiring every check into CI is BM-010.
 
 ## Documents
 
@@ -145,6 +165,7 @@ CI is BM-010.
 | File                   | Purpose                                                   |
 | ---------------------- | --------------------------------------------------------- |
 | `default.project.json` | Rojo mapping from `src/` to the place                     |
+| `tests.project.json`   | Same plus `src/tests`; used only for the type-check sourcemap |
 | `rokit.toml`           | Pinned tool versions                                      |
 | `stylua.toml`          | Formatting rules (tabs, 100 columns, double quotes)       |
 | `selene.toml`          | Lint rules; uses the Roblox standard library              |

@@ -34,6 +34,9 @@ local ROOTS: { { path: { string }, layer: string } } = {
 	{ path = { "ReplicatedStorage", "Shared" }, layer = "shared" },
 	{ path = { "ServerScriptService", "Server" }, layer = "server" },
 	{ path = { "StarterPlayer", "StarterPlayerScripts", "Client" }, layer = "client" },
+	-- Tests are mounted here by tests.project.json and the Lune host only;
+	-- the shipped place (default.project.json) never contains them.
+	{ path = { "ServerStorage", "Tests" }, layer = "tests" },
 }
 
 local function joinPath(a: string, b: string): string

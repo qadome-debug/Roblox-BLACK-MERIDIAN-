@@ -197,16 +197,27 @@ allowed; the console sink is the one place that prints.
 
 ## 7. Testing seams
 
-Because every collaborator is injected, a test constructs a service with:
+Because every collaborator is injected, a test constructs a service with the
+environment `src/tests/Support/Suite` hands to every case (BM-009):
 
-- a deterministic clock and seeded RNG (BM-007),
-- an in-memory DataStore fake that can be told to time out, commit without
-  responding, or reject (BM-009),
-- fake sibling services typed to the same interfaces,
-- a recording logger (BM-008).
+- `env.clock`, a manual clock, and `env.rng`, seeded (BM-007),
+- `env.dataStores`, an in-memory `FakeDataStoreService` whose faults cover
+  the plan's failure modes: `error` and `timeout` (nothing written),
+  `lostResponse` (written, then the call throws: the uncertain-write case),
+  `budget`, and `delay`,
+- `env.logger` with `env.events` / `env.logged(category, event)` to assert
+  on what was logged (BM-008),
+- fake sibling services typed to the same interfaces, written per test.
 
-Tests may never touch a real DataStore. The DataStore wrapper is injected and
-the real implementation is only constructed in `Bootstrap.server.luau`.
+Tests may never touch a real DataStore, HttpService, MessagingService,
+TeleportService, or the wall clock; `tools/check-tests.luau` fails the build
+if a test file names one. The real DataStoreService is only constructed in
+`Bootstrap.server.luau` and passed down.
+
+Test folders follow the plan: `Unit` (one module), `Integration` (several
+services wired together), `Security` (forged, replayed and malformed
+requests), `Persistence` (leases, receipts, fault matrices), `Content`
+(registry and manifest checks).
 
 ## 8. Change control
 
