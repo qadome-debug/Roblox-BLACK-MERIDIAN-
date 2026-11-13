@@ -28,6 +28,8 @@ when its code compiled.
 | BM-018 | Done   | 2026-11-12 | `Network/Dispatcher` runs the nine-step sequence with default deny; `Adapters/ClientHello`; 14 dispatcher tests cover every rejection class, caching, isolation and registration rules |
 | BM-019 | Done   | 2026-11-12 | `Network/Rejections` fixed client-safe messages, abuse classification, category-correct logging and telemetry counts (3 tests) |
 | BM-020 | Done   | 2026-11-12 | Gate record `docs/gates/BM-020.md`; 147 tests, `check-all` green; handshake verified end to end in a Studio playtest (`docs/reviews/2026-11-12-playtest.md`) |
+| BM-021 | Done   | 2026-11-12 | `Persistence/ProfileSchema.default()` builds the typed v1 profile; `validate()` checks every stored field (11 tests with valid and invalid fixtures) |
+| BM-022 | Done   | 2026-11-12 | `ProfileSchema.validate()` enforces every `Limits.PROFILE` bound (max and max+1 tested) and rejects unknown quest/cant/verse/burden/waymark/descent/chapter IDs via `Canon` |
 
 ## Blockers
 
