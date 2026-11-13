@@ -22,7 +22,7 @@ export type Controller = {
 	send: (
 		self: Controller,
 		action: string,
-		payload: { [string]: unknown }?,
+		payload: { [string]: any }?,
 		onResult: ResultHandler?
 	) -> string,
 }
@@ -45,7 +45,7 @@ function Net.new(): Controller
 
 	local function sendRaw(
 		action: string,
-		payload: { [string]: unknown }?,
+		payload: { [string]: any }?,
 		onResult: ResultHandler?
 	): string
 		if epoch == nil then
@@ -127,7 +127,7 @@ function Net.new(): Controller
 
 	function controller:send(
 		action: string,
-		payload: { [string]: unknown }?,
+		payload: { [string]: any }?,
 		onResult: ResultHandler?
 	): string
 		if not ready then
