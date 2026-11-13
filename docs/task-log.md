@@ -35,6 +35,8 @@ when its code compiled.
 | BM-025 | Done   | 2026-11-12 | `Persistence/Lease` atomic acquire with owner, expiry and fencing generation; two-server simultaneous acquisition yields one owner (11 lease tests) |
 | BM-026 | Done   | 2026-11-12 | Renewal by owner and fence only; expired takeover gets a higher fence; stale owner renew → lost; lost-response renew → uncertain then settled |
 | BM-027 | Done   | 2026-11-12 | Conditional release by owner (expired in place, fence kept), non-owner release refused, teleport handoff race: arriving server waits for release or expiry |
+| BM-028 | Done   | 2026-11-12 | `Persistence/ProfileLoader` ready / readOnly / failed states with bounded backoff; outages never fabricate a default; corrupt, newer-schema and non-table records are quarantined untouched (10 tests) |
+| BM-029 | Done   | 2026-11-12 | `Persistence/SaveQueue` per-key ordered coalescing into one lease-guarded UpdateAsync, bounded queue that refuses rather than drops, exponential backoff, uncertain writes kept queued, schema/size rejections leave the store untouched (8 tests) |
 
 ## Blockers
 

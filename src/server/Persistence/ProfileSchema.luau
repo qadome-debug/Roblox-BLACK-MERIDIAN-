@@ -500,7 +500,7 @@ local function validateReceipts(ctx: Ctx, value: unknown)
 			if not isOpaque(t.sourceId) then
 				fail(ctx, path, "sourceId is not a valid opaque id")
 			end
-			if not isInt(t.createdAt, 0, 2 ^ 40) then
+			if not isFiniteNumber(t.createdAt, 0, 2 ^ 40) then
 				fail(ctx, path, "createdAt must be a Unix timestamp")
 			end
 			if not ContentRegistry.isValidId(t.rewardCatalogId) then
@@ -533,7 +533,7 @@ local function validateLease(ctx: Ctx, value: unknown)
 	if not isInt(lease.fence, 0, 2 ^ 50) then
 		fail(ctx, "lease", "fence must be a nonnegative integer")
 	end
-	if not isInt(lease.expiresAt, 0, 2 ^ 40) then
+	if not isFiniteNumber(lease.expiresAt, 0, 2 ^ 40) then
 		fail(ctx, "lease", "expiresAt must be a Unix timestamp")
 	end
 end

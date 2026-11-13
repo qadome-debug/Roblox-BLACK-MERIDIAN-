@@ -114,13 +114,18 @@ function ProfileSize.encodedBytes(value: any): number
 	return #ProfileSize.encode(value)
 end
 
-function ProfileSize.classify(bytes: number): Verdict
-	if bytes > ProfileSize.HARD_BYTES then
+-- Classifies against explicit budgets (tests use small ones).
+function ProfileSize.classifyWith(bytes: number, softBytes: number, hardBytes: number): Verdict
+	if bytes > hardBytes then
 		return "hard"
-	elseif bytes > ProfileSize.SOFT_BYTES then
+	elseif bytes > softBytes then
 		return "soft"
 	end
 	return "ok"
+end
+
+function ProfileSize.classify(bytes: number): Verdict
+	return ProfileSize.classifyWith(bytes, ProfileSize.SOFT_BYTES, ProfileSize.HARD_BYTES)
 end
 
 -- Decides whether a candidate profile may be written. Returns the verdict
