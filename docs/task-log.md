@@ -27,7 +27,7 @@ when its code compiled.
 | BM-017 | Done   | 2026-11-12 | `Network/Session` per-Player sessions with initial and rotated epochs, hello timeout, once-only handshake; 7 tests including reconnect and cross-player epoch rejection |
 | BM-018 | Done   | 2026-11-12 | `Network/Dispatcher` runs the nine-step sequence with default deny; `Adapters/ClientHello`; 14 dispatcher tests cover every rejection class, caching, isolation and registration rules |
 | BM-019 | Done   | 2026-11-12 | `Network/Rejections` fixed client-safe messages, abuse classification, category-correct logging and telemetry counts (3 tests) |
-| BM-020 | Done   | 2026-11-12 | Gate record `docs/gates/BM-020.md`; 147 tests, `check-all` green; client `Controllers/Net` completes the handshake end to end |
+| BM-020 | Done   | 2026-11-12 | Gate record `docs/gates/BM-020.md`; 147 tests, `check-all` green; handshake verified end to end in a Studio playtest (`docs/reviews/2026-11-12-playtest.md`) |
 
 ## Blockers
 
