@@ -32,6 +32,9 @@ when its code compiled.
 | BM-022 | Done   | 2026-11-12 | `ProfileSchema.validate()` enforces every `Limits.PROFILE` bound (max and max+1 tested) and rejects unknown quest/cant/verse/burden/waymark/descent/chapter IDs via `Canon` |
 | BM-023 | Done   | 2026-11-12 | `Persistence/Migrations` version-dispatch chain, deep-copies input, refuses future schemas and gaps, idempotent on current profiles (8 tests with a fake v1→v3 chain) |
 | BM-024 | Done   | 2026-11-12 | `Persistence/ProfileSize` deterministic JSON measurement with 128/192 KiB soft/hard verdicts; oversized candidate rejected while the existing profile is untouched (5 tests) |
+| BM-025 | Done   | 2026-11-12 | `Persistence/Lease` atomic acquire with owner, expiry and fencing generation; two-server simultaneous acquisition yields one owner (11 lease tests) |
+| BM-026 | Done   | 2026-11-12 | Renewal by owner and fence only; expired takeover gets a higher fence; stale owner renew → lost; lost-response renew → uncertain then settled |
+| BM-027 | Done   | 2026-11-12 | Conditional release by owner (expired in place, fence kept), non-owner release refused, teleport handoff race: arriving server waits for release or expiry |
 
 ## Blockers
 
