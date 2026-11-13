@@ -1,8 +1,15 @@
 --!strict
--- Black Meridian client entry point (BM-001).
+-- Black Meridian client entry point.
 --
--- Deliberately empty of gameplay. The client owns presentation only: input,
--- camera, animation, UI, and visual prediction. It submits intentions to the
--- server and never decides rewards, quest state, damage, or progression.
+-- The client owns presentation only: input, camera, animation, UI, and
+-- visual prediction. It submits intentions through the Net controller and
+-- never decides rewards, quest state, damage, or progression.
+
+local Net = require(script.Parent.Controllers.Net)
 
 print("[BlackMeridian] Client bootstrap loaded")
+
+local net = Net.new()
+net:whenReady(function()
+	print("[BlackMeridian] Client handshake complete")
+end)

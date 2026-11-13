@@ -63,6 +63,12 @@ export type Service = {
 		player: PlayerLike,
 		protocolVersion: number
 	) -> (string?, Protocol.Status?, string?),
+	-- Same handshake, for an adapter that holds the session, not the Player.
+	helloSession: (
+		self: Service,
+		session: Session,
+		protocolVersion: number
+	) -> (string?, Protocol.Status?, string?),
 	-- ProfileService calls this once the profile is loaded and leased.
 	markProfileLoaded: (self: Service, player: PlayerLike, loaded: boolean) -> (),
 	count: (self: Service) -> number,
@@ -138,20 +144,16 @@ function Session.new(deps: Deps): Service
 		return true
 	end
 
-	function service:hello(
-		player: PlayerLike,
+	function service:helloSession(
+		session: Session,
 		protocolVersion: number
 	): (string?, Protocol.Status?, string?)
-		local session = sessions[player]
-		if session == nil then
-			return nil, "NOT_READY", "no session for player"
-		end
 		if session.ready then
 			return nil, "REJECTED", "handshake already completed"
 		end
 		if protocolVersion ~= Protocol.VERSION then
 			deps.logger
-				:with({ playerId = player.UserId })
+				:with({ playerId = session.userId })
 				:warn("network", "hello_version_mismatch", {
 					clientVersion = protocolVersion,
 					serverVersion = Protocol.VERSION,
@@ -161,8 +163,19 @@ function Session.new(deps: Deps): Service
 		session.ready = true
 		session.helloAt = deps.clock:now()
 		session.epoch = newEpoch(epochRng)
-		deps.logger:with({ playerId = player.UserId }):info("network", "session_ready")
+		deps.logger:with({ playerId = session.userId }):info("network", "session_ready")
 		return session.epoch, nil, nil
+	end
+
+	function service:hello(
+		player: PlayerLike,
+		protocolVersion: number
+	): (string?, Protocol.Status?, string?)
+		local session = sessions[player]
+		if session == nil then
+			return nil, "NOT_READY", "no session for player"
+		end
+		return service:helloSession(session, protocolVersion)
 	end
 
 	function service:markProfileLoaded(player: PlayerLike, loaded: boolean)
