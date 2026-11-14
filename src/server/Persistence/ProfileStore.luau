@@ -45,7 +45,7 @@ export type Mutation = {
 
 export type Outcome = "committed" | "rejected" | "uncertain"
 
-export type RejectReason = "lease" | "revision" | "schema" | "size" | "noop"
+export type RejectReason = "lease" | "revision" | "schema" | "size" | "noop" | "mutation"
 
 export type Result = {
 	outcome: Outcome,
@@ -134,7 +134,15 @@ function ProfileStore.new(deps: Deps): Store
 				local profile: PlayerProfile = old
 				local changed = false
 				for _, mutation in batch do
-					local next = mutation.apply(profile)
+					-- A mutation that errors is a deterministic failure of the
+					-- batch (capacity, grant rules), not a store failure: the
+					-- write is cancelled and the caller gets "rejected".
+					local okApply, next = pcall(mutation.apply, profile)
+					if not okApply then
+						rejected = "mutation"
+						detail = mutation.id .. ": " .. tostring(next)
+						return nil
+					end
 					if next ~= nil then
 						profile = next
 						changed = true

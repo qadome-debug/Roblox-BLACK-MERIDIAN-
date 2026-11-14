@@ -42,6 +42,11 @@ when its code compiled.
 | BM-032 | Done   | 2026-11-14 | Loader quarantines invalid, corrupt and newer-schema records read-only and untouched; `Persistence/Repair.attempt` fills missing containers and resets a bad lease with an audit report, never touching progression or unknown IDs (5 tests) |
 | BM-033 | Done   | 2026-11-14 | `Persistence/Inventory` pure add/remove for stackables and instances with merge, stack cap, 200-stack capacity, unique instance IDs; invariants verified after an encode round trip (6 tests) |
 | BM-034 | Done   | 2026-11-14 | `Persistence/Balances` integer add/spend with per-currency caps, single-grant ceiling, no negatives, bounded currency count, `canAfford` (5 tests) |
+| BM-035 | Done   | 2026-11-14 | `Content/RewardCatalog` validates definitions (ids, kinds, sources, grant bounds, canonical unlocks) and derives deterministic permanent/seasonal receipt IDs (3 tests); production catalog empty pending the inventory |
+| BM-036 | Done   | 2026-11-14 | `Receipts.permanentGrant` writes receipt and grant in one transform; duplicates within and across sessions are no-ops; capacity fails closed with nothing pruned |
+| BM-037 | Done   | 2026-11-14 | `Receipts.seasonalGrant` with a retention policy: duplicate, closed-season and future-season grants refused; ledger prunes only closed seasons under pressure, then fails closed |
+| BM-038 | Done   | 2026-11-14 | `Receipts.recordIntent` durable pending intents (max 32, fail closed); an intent survives a simulated crash and is fulfilled by the next owner, which clears it in the same write |
+| BM-039 | Done   | 2026-11-14 | `Persistence/Grant.apply` all-or-nothing currencies, items, deterministic instances and unlocks; a failing grant leaves no receipt and no partial change (8 receipt tests) |
 
 ## Blockers
 
