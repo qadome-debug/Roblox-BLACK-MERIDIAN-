@@ -37,6 +37,8 @@ when its code compiled.
 | BM-027 | Done   | 2026-11-12 | Conditional release by owner (expired in place, fence kept), non-owner release refused, teleport handoff race: arriving server waits for release or expiry |
 | BM-028 | Done   | 2026-11-12 | `Persistence/ProfileLoader` ready / readOnly / failed states with bounded backoff; outages never fabricate a default; corrupt, newer-schema and non-table records are quarantined untouched (10 tests) |
 | BM-029 | Done   | 2026-11-12 | `Persistence/SaveQueue` per-key ordered coalescing into one lease-guarded UpdateAsync, bounded queue that refuses rather than drops, exponential backoff, uncertain writes kept queued, schema/size rejections leave the store untouched (8 tests) |
+| BM-030 | Done   | 2026-11-14 | `Persistence/ProfileStore.mutate` is the only profile write: lease guard, optional expected revision, ordered batch, schema and size checks inside one UpdateAsync; `tools/check-persistence.luau` forbids DataStore writes elsewhere (6 tests) |
+| BM-031 | Done   | 2026-11-14 | Thrown writes classified uncertain, never rolled back; `ProfileStore.inspect` and `SaveQueue.reconcile` settle an operation by reading under its original ID, else re-apply idempotently (lost-response and timeout cases tested) |
 
 ## Blockers
 

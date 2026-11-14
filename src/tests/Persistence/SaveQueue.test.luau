@@ -7,6 +7,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local Assert = require(ServerStorage.Tests.Support.Assert)
 local Lease = require(ServerScriptService.Server.Persistence.Lease)
+local ProfileStore = require(ServerScriptService.Server.Persistence.ProfileStore)
 local SaveQueue = require(ServerScriptService.Server.Persistence.SaveQueue)
 local Suite = require(ServerStorage.Tests.Support.Suite)
 
@@ -24,11 +25,19 @@ local function make(env: Suite.Env)
 		store = store,
 		jobId = "job-a",
 	})
+	local profiles = ProfileStore.new({
+		store = store,
+		logger = env.logger,
+		now = function()
+			return env.clock:wallTime()
+		end,
+	})
 	local queue = SaveQueue.new({
 		clock = env.clock,
+		rng = env.rng,
 		logger = env.logger,
 		leases = leases,
-		store = store,
+		profiles = profiles,
 		maxPending = 4,
 		backoff = { 1, 2, 4 },
 		softBytes = 1500,
@@ -124,7 +133,7 @@ suite:case("a committed-but-lost-response write is not applied twice", function(
 	env.clock:advance(1)
 	Assert.equal(queue:flush(KEY), "committed", "re-applied")
 	Assert.equal(balance(env), 5, "receipt made the re-apply a no-op")
-	Assert.equal(env.dataStores:peek(STORE, KEY).revision, 2, "revision counts both writes")
+	Assert.equal(env.dataStores:peek(STORE, KEY).revision, 1, "already applied: no second write")
 end)
 
 suite:case("budget exhaustion escalates the backoff and never loses order", function(env)
@@ -184,7 +193,7 @@ suite:case(
 		})
 		local outcome, reason = queue:flush(KEY)
 		Assert.equal(outcome, "rejected", "rejected")
-		Assert.contains(reason :: string, "invalid profile", "reason")
+		Assert.contains(reason :: string, "must be a nonnegative integer", "reason")
 		Assert.equal(balance(env), 0, "the valid first mutation was not written alone")
 		Assert.equal(queue:pendingCount(KEY), 0, "batch dropped and reported")
 		Assert.count(env.logged("persistence", "save_queue_rejected"), 1, "logged")
@@ -224,5 +233,46 @@ suite:case("flushAll respects per-key backoff and the soft size warning is logge
 		"bytes reported"
 	)
 end)
+
+suite:case(
+	"reconcile settles an uncertain operation by reading, without a second write",
+	function(env)
+		local queue = make(env)
+		local inspectable: SaveQueue.Mutation = {
+			id = "g9",
+			apply = grant("g9", 9).apply,
+			isApplied = function(profile)
+				return profile.receipts.permanent.g9 == true
+			end,
+		}
+		queue:enqueue(KEY, inspectable)
+		env.dataStores:injectFault({ kind = "lostResponse", operation = "UpdateAsync" })
+		Assert.equal(queue:flush(KEY), "uncertain", "uncertain")
+		Assert.notNil((queue:state(KEY) :: SaveQueue.KeyState).operation, "operation recorded")
+		local writes = env.dataStores:callCount("UpdateAsync")
+		Assert.equal(queue:reconcile(KEY), "settled", "settled by reading")
+		Assert.equal(env.dataStores:callCount("UpdateAsync"), writes, "no second write")
+		Assert.equal(queue:pendingCount(KEY), 0, "drained")
+		Assert.isNil((queue:state(KEY) :: SaveQueue.KeyState).operation, "operation closed")
+		Assert.equal(balance(env), 9, "applied exactly once")
+		Assert.count(env.logged("persistence", "save_queue_reconciled"), 1, "logged")
+		Assert.equal(queue:reconcile(KEY), "nothingToDo", "nothing left")
+	end
+)
+
+suite:case(
+	"reconcile asks for a retry when the write did not land, keeping the same operation",
+	function(env)
+		local queue = make(env)
+		queue:enqueue(KEY, grant("g1", 5))
+		env.dataStores:injectFault({ kind = "timeout", operation = "UpdateAsync" })
+		Assert.equal(queue:flush(KEY), "uncertain", "uncertain")
+		local op = (queue:state(KEY) :: SaveQueue.KeyState).operation :: any
+		Assert.equal(queue:reconcile(KEY), "retry", "not applied: retry")
+		Assert.equal(queue:flush(KEY), "committed", "retry succeeds without waiting for backoff")
+		Assert.equal(balance(env), 5, "applied once")
+		Assert.equal(op.attempts, 2, "same operation retried")
+	end
+)
 
 return suite:cases()

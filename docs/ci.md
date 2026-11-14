@@ -19,6 +19,7 @@ before committing. The steps, in order:
 | deps                      | `lune run tools/check-deps.luau`                       | forbidden layer dependency or cycle          |
 | contracts                 | `lune run tools/check-contracts.luau`                  | `any` in Types or Contracts                  |
 | remotes                   | `lune run tools/check-remotes.luau`                    | a remote is created outside `Network/Remotes.luau` |
+| persistence               | `lune run tools/check-persistence.luau`                | a DataStore write outside `Persistence/{Lease,ProfileStore}` |
 | test isolation            | `lune run tools/check-tests.luau`                      | a test names a live service or wall clock    |
 | tests                     | `lune run tools/run-tests.luau`                        | any test fails                               |
 | failing fixture           | `lune run tools/run-tests.luau --root tools/fixtures/tests/failing` | the runner does NOT fail (negative fixture) |
