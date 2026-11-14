@@ -39,6 +39,9 @@ when its code compiled.
 | BM-029 | Done   | 2026-11-12 | `Persistence/SaveQueue` per-key ordered coalescing into one lease-guarded UpdateAsync, bounded queue that refuses rather than drops, exponential backoff, uncertain writes kept queued, schema/size rejections leave the store untouched (8 tests) |
 | BM-030 | Done   | 2026-11-14 | `Persistence/ProfileStore.mutate` is the only profile write: lease guard, optional expected revision, ordered batch, schema and size checks inside one UpdateAsync; `tools/check-persistence.luau` forbids DataStore writes elsewhere (6 tests) |
 | BM-031 | Done   | 2026-11-14 | Thrown writes classified uncertain, never rolled back; `ProfileStore.inspect` and `SaveQueue.reconcile` settle an operation by reading under its original ID, else re-apply idempotently (lost-response and timeout cases tested) |
+| BM-032 | Done   | 2026-11-14 | Loader quarantines invalid, corrupt and newer-schema records read-only and untouched; `Persistence/Repair.attempt` fills missing containers and resets a bad lease with an audit report, never touching progression or unknown IDs (5 tests) |
+| BM-033 | Done   | 2026-11-14 | `Persistence/Inventory` pure add/remove for stackables and instances with merge, stack cap, 200-stack capacity, unique instance IDs; invariants verified after an encode round trip (6 tests) |
+| BM-034 | Done   | 2026-11-14 | `Persistence/Balances` integer add/spend with per-currency caps, single-grant ceiling, no negatives, bounded currency count, `canAfford` (5 tests) |
 
 ## Blockers
 
