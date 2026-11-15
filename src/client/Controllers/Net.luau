@@ -25,6 +25,10 @@ export type Controller = {
 		payload: { [string]: any }?,
 		onResult: ResultHandler?
 	) -> string,
+	-- Presentation feeds. Handlers receive whatever the server pushed;
+	-- they display it and never send it back.
+	onStateDelta: (self: Controller, handler: (delta: { [string]: unknown }) -> ()) -> (),
+	onCombatCue: (self: Controller, handler: (batch: { [string]: unknown }) -> ()) -> (),
 }
 
 local Net = {}
@@ -34,12 +38,15 @@ function Net.new(): Controller
 	local actionRequest = folder:WaitForChild(Protocol.REMOTES.ACTION_REQUEST) :: RemoteEvent
 	local actionResult = folder:WaitForChild(Protocol.REMOTES.ACTION_RESULT) :: RemoteEvent
 	local stateDelta = folder:WaitForChild(Protocol.REMOTES.STATE_DELTA) :: RemoteEvent
+	local combatCue = folder:WaitForChild(Protocol.REMOTES.COMBAT_CUE) :: RemoteEvent
 
 	local epoch: string? = nil
 	local seq = 0
 	local ready = false
 	local readyCallbacks: { () -> () } = {}
 	local pending: { [string]: ResultHandler } = {}
+	local deltaHandlers: { (delta: { [string]: unknown }) -> () } = {}
+	local cueHandlers: { (batch: { [string]: unknown }) -> () } = {}
 
 	local controller = {} :: Controller
 
@@ -110,6 +117,20 @@ function Net.new(): Controller
 			if not ready then
 				hello()
 			end
+			return
+		end
+		if type(delta) == "table" then
+			for _, handler in deltaHandlers do
+				task.spawn(handler, delta)
+			end
+		end
+	end)
+
+	combatCue.OnClientEvent:Connect(function(batch: { [string]: unknown })
+		if type(batch) == "table" then
+			for _, handler in cueHandlers do
+				task.spawn(handler, batch)
+			end
 		end
 	end)
 
@@ -123,6 +144,14 @@ function Net.new(): Controller
 
 	function controller:isReady(): boolean
 		return ready
+	end
+
+	function controller:onStateDelta(handler: (delta: { [string]: unknown }) -> ())
+		table.insert(deltaHandlers, handler)
+	end
+
+	function controller:onCombatCue(handler: (batch: { [string]: unknown }) -> ())
+		table.insert(cueHandlers, handler)
 	end
 
 	function controller:send(

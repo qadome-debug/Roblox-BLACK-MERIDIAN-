@@ -92,6 +92,8 @@ export type Simulation = {
 	-- (BM-056) computes the amount; nothing else calls this.
 	damage: (self: Simulation, id: string, amount: number) -> number,
 	onActive: (self: Simulation, listener: ActiveListener) -> (),
+	-- Called at the end of every step (AI, targeting, replication).
+	onStep: (self: Simulation, listener: (step: number) -> ()) -> (),
 	-- Records an event from a resolution layer (hits, damage) in the log.
 	emit: (self: Simulation, kind: string, id: string, data: { [string]: any }?) -> (),
 	drainEvents: (self: Simulation) -> { Event },
@@ -124,6 +126,7 @@ function Simulation.new(deps: Deps): Simulation
 	local order: { string } = {}
 	local events: { Event } = {}
 	local listeners: { ActiveListener } = {}
+	local stepListeners: { (number) -> () } = {}
 	local currentStep = 0
 
 	local sim = {} :: Simulation
@@ -374,6 +377,9 @@ function Simulation.new(deps: Deps): Simulation
 				Resources.regen(combatant.resources, combatant.derived, now, stepSeconds)
 			end
 		end
+		for _, listener in stepListeners do
+			listener(currentStep)
+		end
 	end
 
 	function sim:advance(elapsed: number): number
@@ -411,6 +417,10 @@ function Simulation.new(deps: Deps): Simulation
 
 	function sim:onActive(listener: ActiveListener)
 		table.insert(listeners, listener)
+	end
+
+	function sim:onStep(listener: (number) -> ())
+		table.insert(stepListeners, listener)
 	end
 
 	function sim:emit(kind: string, id: string, data: { [string]: any }?)
