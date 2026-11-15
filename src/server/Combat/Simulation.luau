@@ -38,6 +38,8 @@ export type CombatantSpec = {
 	modifiers: { Attributes.Modifier }?,
 	actions: { [string]: ActionMachine.ActionDef }?,
 	position: Vec3.Vec3?,
+	-- Unit vector the combatant looks along; defaults to -Z like a Roblox LookVector.
+	facing: Vec3.Vec3?,
 }
 
 export type Combatant = {
@@ -49,6 +51,7 @@ export type Combatant = {
 	action: ActionMachine.State,
 	actions: { [string]: ActionMachine.ActionDef },
 	position: Vec3.Vec3,
+	facing: Vec3.Vec3,
 	lastSequence: number,
 	pending: { Intent },
 	-- Resolution layers (BM-055..057) keep their per-combatant data here.
@@ -89,6 +92,8 @@ export type Simulation = {
 	-- (BM-056) computes the amount; nothing else calls this.
 	damage: (self: Simulation, id: string, amount: number) -> number,
 	onActive: (self: Simulation, listener: ActiveListener) -> (),
+	-- Records an event from a resolution layer (hits, damage) in the log.
+	emit: (self: Simulation, kind: string, id: string, data: { [string]: any }?) -> (),
 	drainEvents: (self: Simulation) -> { Event },
 	snapshot: (self: Simulation, id: string) -> Snapshot?,
 	rng: Rng.Rng,
@@ -164,6 +169,10 @@ function Simulation.new(deps: Deps): Simulation
 		if not Vec3.isFinite(position) then
 			error("Simulation:addCombatant: position must be finite", 2)
 		end
+		local facing = spec.facing or Vec3.new(0, 0, -1)
+		if not Vec3.isFinite(facing) or Vec3.magnitude(facing) == 0 then
+			error("Simulation:addCombatant: facing must be a finite, nonzero vector", 2)
+		end
 		local combatant: Combatant = {
 			id = spec.id,
 			team = spec.team,
@@ -173,6 +182,7 @@ function Simulation.new(deps: Deps): Simulation
 			action = ActionMachine.new(),
 			actions = actions,
 			position = Vec3.copy(position),
+			facing = Vec3.unit(facing),
 			lastSequence = 0,
 			pending = {},
 			extra = {},
@@ -383,6 +393,10 @@ function Simulation.new(deps: Deps): Simulation
 
 	function sim:onActive(listener: ActiveListener)
 		table.insert(listeners, listener)
+	end
+
+	function sim:emit(kind: string, id: string, data: { [string]: any }?)
+		emit(kind, id, data)
 	end
 
 	function sim:drainEvents(): { Event }

@@ -62,6 +62,7 @@ when its code compiled.
 | BM-052 | Done   | 2026-11-15 | `Combat/Attributes`: four server-owned base attributes (ints 1..99), eight derived stats from fixed formulas, validated add/mul modifiers (order-independent: adds, then muls, then round to 1/100, then cap); `check-deps` gains the Combat layer rule (3 tests) |
 | BM-053 | Done   | 2026-11-15 | `Combat/Resources`: health/stamina/posture never below zero or above cap; spend-before-act with same-step competition; per-pool regen delays (stamina 1s, posture 2s); posture break at zero and recovery past half; clamp after cap changes; validate (4 tests) |
 | BM-054 | Done   | 2026-11-15 | `Combat/ActionMachine` (Idle/Attacking/Dodging/Guarding/Parrying/Hit/Staggered/Dead; Windup→Active→Recovery in whole steps; fixed transition table with cancel windows; held guard + Release) and `Combat/Simulation` (FixedStep loop, id-ordered combatants, sequence-ordered intents, stale/duplicate/flood rejection, costs checked before start, per-step regen, event log, death transition, `onActive` hook for hit resolution) (7 tests) |
+| BM-055 | Done   | 2026-11-15 | `Combat/Hitboxes`: hits found only by the server during Active frames; reach/arc/height/team/alive/line-of-sight/layer-veto filtering; one hit per target per swing (actionId); intent `target` is never evidence; `candidates` for targeting; hit events in the sim log (6 tests) |
 
 ## Blockers
 
