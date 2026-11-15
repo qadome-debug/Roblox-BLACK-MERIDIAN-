@@ -37,8 +37,21 @@ export type Migrator = {
 
 local Migrations = {}
 
--- The production chain. Empty while schema version 1 is the only version.
-Migrations.STEPS = table.freeze({} :: { Step })
+-- The production chain.
+Migrations.STEPS = table.freeze({
+	-- v1 -> v2 (BM-047): receipts gain an append-only list of archive keys.
+	{
+		from = 1,
+		to = 2,
+		apply = function(raw: Raw): Raw
+			if type(raw.receipts) == "table" and raw.receipts.archives == nil then
+				raw.receipts.archives = {}
+			end
+			raw.schemaVersion = 2
+			return raw
+		end,
+	},
+} :: { Step })
 
 local function deepCopy(value: any): any
 	if type(value) ~= "table" then

@@ -61,6 +61,9 @@ export type ReceiptState = {
 	permanent: { [string]: boolean },
 	seasonal: { [string]: number },
 	pending: { [string]: RewardIntent },
+	-- Keys of archive records holding permanent receipts moved out of the
+	-- profile when it approached its budget (schema 2, BM-047). Append-only.
+	archives: { string },
 }
 
 export type SessionLease = {
@@ -89,6 +92,6 @@ local Profile = {}
 
 -- The schema version new profiles are written at. Migrations (BM-023) move
 -- older versions forward one step at a time.
-Profile.SCHEMA_VERSION = 1
+Profile.SCHEMA_VERSION = 2
 
 return table.freeze(Profile)

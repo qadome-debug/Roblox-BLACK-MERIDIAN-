@@ -53,6 +53,9 @@ when its code compiled.
 | BM-043 | Done   | 2026-11-14 | Telemetry events `reward_granted`, `reward_duplicate`, `reward_refused`, `reward_recovered`, `reward_compensation`, `descent_run_recorded` carry reward, receipt, source and player; logs carry correlation and player IDs |
 | BM-045 | Done   | 2026-11-14 | `Services/RewardService` is the single facade: catalog lookup, source check, deterministic receipt, intent-then-grant flow, duplicate detection before any write (7 tests) |
 | BM-046 | Done   | 2026-11-14 | `RewardService.reconcile` settles uncertain writes by reading, retries stale intents under the same IDs, escalates intents past the window or with vanished rewards |
+| BM-044 | Done   | 2026-11-14 | `tests/Persistence/FaultMatrix` injects error, timeout, lost-response and budget faults at each grant write boundary, across a crash-and-takeover, on lease acquire/renew and on corrupt reads; every case converges to one payment and single ownership (11 cases) |
+| BM-047 | Done   | 2026-11-14 | `Persistence/ReceiptCapacity`: warn/critical gauges with telemetry; archive migration moves the oldest half of permanent receipts to a confirmed archive record before a lease-guarded profile update (schema v2 `receipts.archives`); grants consult archives; exhaustion with nothing archivable fails closed (5 tests) |
+| BM-048 | Done   | 2026-11-14 | `tests/Persistence/Stress`: 3 seeds x 120 attempts x 3 players with random faults, server crashes, stale-owner writes and replayed sources; balances equal receipts, no pending intents, no fenced-out grant, every receipt traces to a real request |
 
 ## Blockers
 

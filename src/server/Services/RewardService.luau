@@ -23,6 +23,7 @@ local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
 local Logger = require(script.Parent.Parent.Logging.Logger)
 local Profile = require(ReplicatedStorage.Shared.Types.Profile)
 local ProfileStore = require(script.Parent.Parent.Persistence.ProfileStore)
+local ReceiptCapacity = require(script.Parent.Parent.Persistence.ReceiptCapacity)
 local Receipts = require(script.Parent.Parent.Persistence.Receipts)
 local RewardCatalog = require(script.Parent.Parent.Content.RewardCatalog)
 local SaveQueue = require(script.Parent.Parent.Persistence.SaveQueue)
@@ -55,6 +56,7 @@ export type Deps = {
 	catalog: RewardCatalog.Catalog,
 	queue: SaveQueue.Queue,
 	profiles: ProfileStore.Store,
+	capacity: ReceiptCapacity.Monitor,
 	-- The DataStore for run records (BM-042); injected like the profile store.
 	runStore: ProfileStore.RawStore,
 	seasons: Receipts.SeasonPolicy,
@@ -94,6 +96,12 @@ export type Service = {
 		self: Service,
 		target: Target
 	) -> { settled: boolean, retried: number, escalated: number },
+	-- Capacity monitoring and archive migration for a loaded profile.
+	maintain: (
+		self: Service,
+		target: Target,
+		profile: Profile.PlayerProfile
+	) -> ReceiptCapacity.Report,
 	start: (self: Service) -> (),
 }
 
@@ -223,14 +231,44 @@ function RewardService.new(deps: Deps): Service
 		return definition, nil
 	end
 
+	-- Archived permanent receipts per key, loaded once per session. Archives
+	-- are append-only, so the cache only grows when we archive ourselves.
+	local archivedCache: { [string]: ReceiptCapacity.ArchivedSet } = {}
+
+	local function archivedFor(target: Target, profile: any?): ReceiptCapacity.ArchivedSet?
+		local cached = archivedCache[target.key]
+		if cached ~= nil then
+			return cached
+		end
+		local stored = profile or deps.profiles:read(target.key)
+		if type(stored) ~= "table" or type(stored.receipts) ~= "table" then
+			return nil
+		end
+		local set = deps.capacity.loadArchived(stored)
+		if set ~= nil then
+			archivedCache[target.key] = set
+		end
+		return set
+	end
+
+	-- nil means "cannot tell" (store or archive unreadable): never grant then.
 	local function alreadyGranted(target: Target, receiptId: string): boolean?
 		local stored = deps.profiles:read(target.key)
 		if type(stored) ~= "table" then
 			return nil
 		end
 		local receipts = (stored :: any).receipts
-		return receipts ~= nil
-			and (receipts.permanent[receiptId] == true or receipts.seasonal[receiptId] ~= nil)
+		if receipts == nil then
+			return nil
+		end
+		if receipts.permanent[receiptId] == true or receipts.seasonal[receiptId] ~= nil then
+			return true
+		end
+		local archived = archivedFor(target, stored)
+		if archived == nil then
+			return nil
+		end
+		return archived[receiptId] == true
 	end
 
 	function service:grantPermanent(target: Target, source: Source, rewardId: string): GrantResult
@@ -251,7 +289,7 @@ function RewardService.new(deps: Deps): Service
 			return { outcome = "duplicate", receiptId = receiptId }
 		end
 		return execute(target, receiptId, source.id, definition, function()
-			return Receipts.permanentGrant(receiptId, definition)
+			return Receipts.permanentGrant(receiptId, definition, archivedFor(target))
 		end)
 	end
 
@@ -320,7 +358,7 @@ function RewardService.new(deps: Deps): Service
 			return { outcome = "duplicate", receiptId = receiptId }
 		end
 		local result = execute(target, receiptId, "comp-" .. operator.caseId, definition, function()
-			return Receipts.permanentGrant(receiptId, definition)
+			return Receipts.permanentGrant(receiptId, definition, archivedFor(target))
 		end)
 		track(
 			"reward_compensation",
@@ -447,6 +485,10 @@ function RewardService.new(deps: Deps): Service
 		target: Target
 	): { settled: boolean, retried: number, escalated: number }
 		local settledVerdict = deps.queue:reconcile(target.key)
+		if settledVerdict == "retry" then
+			-- The queued operation did not land; re-apply it now.
+			deps.queue:flush(target.key)
+		end
 		local result = { settled = settledVerdict == "settled", retried = 0, escalated = 0 }
 		local stored = deps.profiles:read(target.key)
 		if type(stored) ~= "table" then
@@ -471,6 +513,24 @@ function RewardService.new(deps: Deps): Service
 		end
 		result.retried = service:recoverPending(target, profile)
 		return result
+	end
+
+	function service:maintain(
+		target: Target,
+		profile: Profile.PlayerProfile
+	): ReceiptCapacity.Report
+		local report = deps.capacity.observe(target.key, target.userId, profile)
+		if ReceiptCapacity.needsArchive(profile) then
+			local mutation, reason = deps.capacity.buildArchive(target.key, profile)
+			if mutation ~= nil and deps.queue:enqueue(target.key, mutation) then
+				local outcome = deps.queue:flush(target.key)
+				log("info", "receipt_archive_applied", target, { outcome = outcome })
+				archivedCache[target.key] = nil
+			else
+				log("error", "receipt_archive_failed", target, { detail = reason or "queue full" })
+			end
+		end
+		return report
 	end
 
 	function service:start() end

@@ -51,7 +51,7 @@ local _profile: Profile.PlayerProfile = {
 	inventory = {},
 	balances = {},
 	descents = { unlockedTiers = {}, bestClears = {} },
-	receipts = { permanent = {}, seasonal = {}, pending = {} },
+	receipts = { permanent = {}, seasonal = {}, pending = {}, archives = {} },
 }
 
 local cases = {}

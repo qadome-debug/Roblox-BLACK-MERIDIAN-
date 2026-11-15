@@ -10,6 +10,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Assert = require(ServerStorage.Tests.Support.Assert)
 local Lease = require(ServerScriptService.Server.Persistence.Lease)
 local ProfileStore = require(ServerScriptService.Server.Persistence.ProfileStore)
+local ReceiptCapacity = require(ServerScriptService.Server.Persistence.ReceiptCapacity)
 local RewardCatalog = require(ServerScriptService.Server.Content.RewardCatalog)
 local RewardService = require(ServerScriptService.Server.Services.RewardService)
 local SaveQueue = require(ServerScriptService.Server.Persistence.SaveQueue)
@@ -82,13 +83,21 @@ local function world(env: Suite.Env, jobId: string): World
 		leases = leases,
 		profiles = profiles,
 	})
+	local telemetry = Telemetry.new(env.logger)
+	local capacity = ReceiptCapacity.new({
+		logger = env.logger,
+		telemetry = telemetry,
+		profiles = profiles,
+		archiveStore = env.dataStores:GetDataStore(ReceiptCapacity.ARCHIVE_STORE_NAME) :: any,
+	})
 	local service = RewardService.new({
 		clock = env.clock,
 		logger = env.logger,
-		telemetry = Telemetry.new(env.logger),
+		telemetry = telemetry,
 		catalog = CATALOG,
 		queue = queue,
 		profiles = profiles,
+		capacity = capacity,
 		runStore = runStore,
 		seasons = SEASONS,
 		retryAfterSeconds = 30,

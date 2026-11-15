@@ -87,9 +87,12 @@ end
 
 -- One-time grant. Returns the mutation, or nil with a refusal when it can
 -- be decided up front.
+-- `archived` is the set of receipts moved to archive records for this
+-- profile (BM-047); a receipt found there is already paid.
 function Receipts.permanentGrant(
 	receiptId: string,
-	definition: RewardCatalog.Definition
+	definition: RewardCatalog.Definition,
+	archived: { [string]: boolean }?
 ): (Mutation?, Refusal?)
 	if not isOpaque(receiptId) then
 		return nil, "badId"
@@ -99,7 +102,9 @@ function Receipts.permanentGrant(
 		id = receiptId,
 		irreversible = true,
 		apply = function(profile: PlayerProfile): PlayerProfile?
-			if profile.receipts.permanent[receiptId] then
+			if
+				profile.receipts.permanent[receiptId] or (archived ~= nil and archived[receiptId])
+			then
 				return nil
 			end
 			if countKeys(profile.receipts.permanent) >= P.MAX_PERMANENT_RECEIPTS then
@@ -117,6 +122,7 @@ function Receipts.permanentGrant(
 		end,
 		isApplied = function(profile: PlayerProfile): boolean
 			return profile.receipts.permanent[receiptId] == true
+				or (archived ~= nil and archived[receiptId] == true)
 		end,
 	},
 		nil

@@ -52,7 +52,7 @@ suite:case("a new player gets a fresh default profile and the lease", function(e
 	Assert.notNil(loaded.handle, "handle")
 	Assert.deepEqual(
 		(loaded.profile :: any).receipts,
-		{ permanent = {}, seasonal = {}, pending = {} },
+		{ permanent = {}, seasonal = {}, pending = {}, archives = {} },
 		"default receipts"
 	)
 	Assert.equal(

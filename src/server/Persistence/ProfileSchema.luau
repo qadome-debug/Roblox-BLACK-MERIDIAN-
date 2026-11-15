@@ -39,7 +39,7 @@ function ProfileSchema.default(): PlayerProfile
 		inventory = {},
 		balances = {},
 		descents = { unlockedTiers = {}, bestClears = {} },
-		receipts = { permanent = {}, seasonal = {}, pending = {} },
+		receipts = { permanent = {}, seasonal = {}, pending = {}, archives = {} },
 	}
 end
 
@@ -444,7 +444,27 @@ local function validateReceipts(ctx: Ctx, value: unknown)
 	if receipts == nil then
 		return
 	end
-	expectKeys(ctx, "receipts", receipts, { permanent = true, seasonal = true, pending = true })
+	expectKeys(
+		ctx,
+		"receipts",
+		receipts,
+		{ permanent = true, seasonal = true, pending = true, archives = true }
+	)
+
+	local archives = expectTable(ctx, "receipts.archives", receipts.archives)
+	if archives ~= nil then
+		if not isArray(archives) then
+			fail(ctx, "receipts.archives", "must be an array")
+		elseif #archives > 16 then
+			fail(ctx, "receipts.archives", "more than 16 archives")
+		else
+			for _, archiveKey in ipairs(archives :: { unknown }) do
+				if not isOpaque(archiveKey) then
+					fail(ctx, "receipts.archives", "archive key is not a valid opaque id")
+				end
+			end
+		end
+	end
 
 	local permanent = expectTable(ctx, "receipts.permanent", receipts.permanent)
 	if permanent ~= nil then

@@ -78,7 +78,7 @@ suite:case("top-level shape and version", function()
 	expectError(p, "unexpected field extra")
 	p = rich()
 	p.schemaVersion = 99
-	expectError(p, "schemaVersion: expected 1")
+	expectError(p, "schemaVersion: expected 2")
 	p = rich()
 	p.revision = -1
 	expectError(p, "revision: must be a nonnegative integer")
