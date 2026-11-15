@@ -57,7 +57,7 @@ when its code compiled.
 | BM-047 | Done   | 2026-11-14 | `Persistence/ReceiptCapacity`: warn/critical gauges with telemetry; archive migration moves the oldest half of permanent receipts to a confirmed archive record before a lease-guarded profile update (schema v2 `receipts.archives`); grants consult archives; exhaustion with nothing archivable fails closed (5 tests) |
 | BM-048 | Done   | 2026-11-14 | `tests/Persistence/Stress`: 3 seeds x 120 attempts x 3 players with random faults, server crashes, stale-owner writes and replayed sources; balances equal receipts, no pending intents, no fenced-out grant, every receipt traces to a real request |
 | BM-049 | Done   | 2026-11-14 | `Operations/Recovery`: role-checked inspect, retryIntent, clearIntent, compensate and repair; every action audited as a security event with operator, role and case; idempotent; writes refused while the player is online (7 tests) |
-| BM-050 | Done*  | 2026-11-15 | `Services/ProfileService` wires leases, loader, queue, rewards and capacity into the player lifecycle with the session gate; Bootstrap stage 2 and 5 wired; 6 integration tests; gate record `docs/gates/BM-050.md`. *Studio playtest pending in this session |
+| BM-050 | Done   | 2026-11-15 | `Services/ProfileService` wires leases, loader, queue, rewards and capacity into the player lifecycle with the session gate; Bootstrap stage 2 and 5 wired; 6 integration tests; gate record `docs/gates/BM-050.md`; Studio playtest: server up, handshake OK, profile load degrades to `failed` (unpublished place) with 5 retries and no fabricated data |
 
 ## Blockers
 
