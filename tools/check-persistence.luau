@@ -15,6 +15,8 @@ local process = require("@lune/process")
 local ALLOWED = {
 	["src/server/Persistence/Lease.luau"] = true,
 	["src/server/Persistence/ProfileStore.luau"] = true,
+	-- Defines the DataStore surface for a store that cannot be opened.
+	["src/server/Persistence/UnavailableStore.luau"] = true,
 	-- Bootstrap wires the real DataStoreService to the persistence layer.
 	["src/server/Bootstrap.server.luau"] = { GetDataStore = true },
 	-- The test fake implements the API.

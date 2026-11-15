@@ -21,6 +21,7 @@ local Remotes = require(script.Parent.Network.Remotes)
 local Rng = require(ReplicatedStorage.Shared.Sim.Rng)
 local Session = require(script.Parent.Network.Session)
 local Telemetry = require(script.Parent.Logging.Telemetry)
+local UnavailableStore = require(script.Parent.Persistence.UnavailableStore)
 
 -- Stage 1: configuration, clock, logging.
 local function detectEnvironment(): Config.Environment
@@ -76,6 +77,37 @@ local sessions = Session.new({
 })
 
 -- Stage 2: persistence and rewards.
+-- Opens the scoped DataStores. Production refuses to start without them;
+-- Studio and development degrade to stores whose every call fails, so the
+-- server stays up and players remain non-mutating (plan 2.3).
+local function openStores(): ProfileService.Stores
+	local names: { [string]: string } = {
+		profiles = ProfileService.STORE_NAME,
+		runs = "DescentRuns",
+		archives = "ProfileReceiptArchive",
+	}
+	local stores: { [string]: any } = {}
+	for field, name in names do
+		local ok, result = pcall(function()
+			return DataStoreService:GetDataStore(name, config.dataStoreScope)
+		end)
+		if ok then
+			stores[field] = result
+		else
+			logger:error(
+				"persistence",
+				"datastore_unavailable",
+				{ store = name, error = tostring(result) }
+			)
+			if config.environment == "production" then
+				error("DataStore " .. name .. " unavailable in production; refusing to start")
+			end
+			stores[field] = UnavailableStore.new(name, tostring(result))
+		end
+	end
+	return stores :: any
+end
+
 local profiles = ProfileService.new({
 	config = config,
 	clock = clock,
@@ -85,11 +117,7 @@ local profiles = ProfileService.new({
 	markProfileLoaded = function(player, loaded)
 		sessions:markProfileLoaded(player, loaded)
 	end,
-	stores = {
-		profiles = DataStoreService:GetDataStore(ProfileService.STORE_NAME, config.dataStoreScope) :: any,
-		runs = DataStoreService:GetDataStore("DescentRuns", config.dataStoreScope) :: any,
-		archives = DataStoreService:GetDataStore("ProfileReceiptArchive", config.dataStoreScope) :: any,
-	},
+	stores = openStores(),
 	jobId = if game.JobId ~= "" then game.JobId else "studio",
 	wait = function(seconds)
 		task.wait(seconds)
