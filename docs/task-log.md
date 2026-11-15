@@ -63,6 +63,7 @@ when its code compiled.
 | BM-053 | Done   | 2026-11-15 | `Combat/Resources`: health/stamina/posture never below zero or above cap; spend-before-act with same-step competition; per-pool regen delays (stamina 1s, posture 2s); posture break at zero and recovery past half; clamp after cap changes; validate (4 tests) |
 | BM-054 | Done   | 2026-11-15 | `Combat/ActionMachine` (Idle/Attacking/Dodging/Guarding/Parrying/Hit/Staggered/Dead; Windup→Active→Recovery in whole steps; fixed transition table with cancel windows; held guard + Release) and `Combat/Simulation` (FixedStep loop, id-ordered combatants, sequence-ordered intents, stale/duplicate/flood rejection, costs checked before start, per-step regen, event log, death transition, `onActive` hook for hit resolution) (7 tests) |
 | BM-055 | Done   | 2026-11-15 | `Combat/Hitboxes`: hits found only by the server during Active frames; reach/arc/height/team/alive/line-of-sight/layer-veto filtering; one hit per target per swing (actionId); intent `target` is never evidence; `candidates` for targeting; hit events in the sim log (6 tests) |
+| BM-056 | Done   | 2026-11-15 | `Combat/Damage`: raw = attackPower × action scale, defense mitigation raw×100/(100+D), hook chain for defensive outcomes (never above raw), per-hit cap 1000, dodge Active frames invulnerable (veto fed to Hitboxes), hit stun interrupts the target (cancels its swing), death via the simulation, dead never hit (7 tests) |
 
 ## Blockers
 
