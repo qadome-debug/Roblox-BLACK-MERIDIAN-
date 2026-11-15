@@ -124,13 +124,9 @@ suite:case("dodge active frames are invulnerable; recovery frames are not", func
 	submit(s.sim, "b", "Dodge", 2) -- starts 31, active 31..38, recovery 39..44
 	run(s.sim, 8) -- step 38: still invulnerable
 	Assert.count(s.records, 0, "frame 37 and 38 invulnerable")
-	-- Step 39: b leaves its active frames when b is processed, which is
-	-- after a (id order), so a sees the change on the next step.
-	run(s.sim, 1)
-	Assert.count(s.records, 0, "phase change visible to others from the next step")
-	run(s.sim, 1) -- step 40
+	run(s.sim, 1) -- step 39: every phase advances before hits resolve
 	Assert.count(s.records, 1, "hit on the first vulnerable frame of the same swing")
-	Assert.equal(s.records[1].hit.frame, 3, "last active frame")
+	Assert.equal(s.records[1].hit.frame, 2, "third active frame")
 	Assert.isTrue(
 		s.damage:isInvulnerable(s.sim:get("b") :: Simulation.Combatant) == false,
 		"not invulnerable now"

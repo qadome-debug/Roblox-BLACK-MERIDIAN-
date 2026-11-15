@@ -335,26 +335,44 @@ function Simulation.new(deps: Deps): Simulation
 		end
 	end
 
+	-- One step, in three passes over every living combatant so the order
+	-- of ids never favours anyone: every phase boundary is crossed first,
+	-- then every intent received before this step is judged, and only
+	-- then are hits resolved against the resulting states. A defence that
+	-- the server received before step N is in effect for every hit at N.
 	function sim:step()
 		currentStep += 1
 		local now = sim:now()
+		local living: { Combatant } = {}
 		for _, id in order do
 			local combatant = combatants[id]
 			if combatant.action.state == "Dead" then
 				combatant.pending = {}
-				continue
+			else
+				table.insert(living, combatant)
+				advanceAction(combatant)
 			end
-			-- Phase boundaries first, so a cancel window that opens this
-			-- step is visible to this step's intents.
-			advanceAction(combatant)
+		end
+		for _, combatant in living do
 			processIntents(combatant)
-			if combatant.action.phase == "Active" then
+		end
+		for _, combatant in living do
+			-- Re-check: an earlier hit this step may have interrupted or
+			-- killed this combatant.
+			if
+				combatant.action.phase == "Active"
+				and (combatant.action.state :: string) ~= "Dead"
+			then
 				local frame = ActionMachine.phaseFrame(combatant.action, currentStep)
 				for _, listener in listeners do
 					listener(combatant, frame, currentStep)
 				end
 			end
-			Resources.regen(combatant.resources, combatant.derived, now, stepSeconds)
+		end
+		for _, combatant in living do
+			if (combatant.action.state :: string) ~= "Dead" then
+				Resources.regen(combatant.resources, combatant.derived, now, stepSeconds)
+			end
 		end
 	end
 
