@@ -66,6 +66,7 @@ when its code compiled.
 | BM-056 | Done   | 2026-11-15 | `Combat/Damage`: raw = attackPower × action scale, defense mitigation raw×100/(100+D), hook chain for defensive outcomes (never above raw), per-hit cap 1000, dodge Active frames invulnerable (veto fed to Hitboxes), hit stun interrupts the target (cancels its swing), death via the simulation, dead never hit (7 tests) |
 | BM-057 | Done   | 2026-11-15 | `Combat/Defense` hook on the damage pipeline: parry Active frames negate the hit, stagger the attacker and cost it posture; guards in the front arc reduce damage, pay posture + stamina and break (full damage, long stagger) at zero; back attacks bypass; recovering parries are punished; `Simulation:step` now runs three passes (advance all, intents, hits) so id order never favours a side (7 tests) |
 | BM-058 | Done   | 2026-11-15 | `Combat/Ai`: per-enemy brain Idle→Chase→Attack→Return with aggro range, injectable navigator (straight-line default), repath interval, path-failure budget, leash, home reset (full resources), attack scheduling with cooldown + seeded jitter, all through the sim intent API; loot ownership tallied from server-resolved damage (8 tests) |
+| BM-059 | Done   | 2026-11-15 | `Combat/Targeting`: server-granted lock-on (exists, alive, hostile, in range, in sight), nearest-first `cycle`, per-step re-validation with grace period, drops on death/removal/clear, engagement from server-resolved damage with timeout, `engage` for other systems; hits never consult the lock (6 tests) |
 
 ## Blockers
 
