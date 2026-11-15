@@ -194,6 +194,12 @@ local function layerViolation(from: { string }, to: { string }): string?
 		end
 		return nil
 	end
+	if fromArea == "Combat" then
+		if toArea ~= "Combat" and toArea ~= "Logging" then
+			return "Combat (pure simulation) must not depend on " .. tostring(toArea)
+		end
+		return nil
+	end
 	if fromArea == "Logging" then
 		if toArea ~= "Logging" then
 			return "Logging must not depend on " .. tostring(toArea)

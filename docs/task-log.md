@@ -59,6 +59,8 @@ when its code compiled.
 | BM-049 | Done   | 2026-11-14 | `Operations/Recovery`: role-checked inspect, retryIntent, clearIntent, compensate and repair; every action audited as a security event with operator, role and case; idempotent; writes refused while the player is online (7 tests) |
 | BM-050 | Done   | 2026-11-15 | `Services/ProfileService` wires leases, loader, queue, rewards and capacity into the player lifecycle with the session gate; Bootstrap stage 2 and 5 wired; 6 integration tests; gate record `docs/gates/BM-050.md`; Studio playtest: server up, handshake OK, profile load degrades to `failed` (unpublished place) with 5 retries and no fabricated data |
 | BM-051 | Done   | 2026-11-15 | `Services/CharacterService` + `shared/Sim/Vec3`: server-owned None→Alive→Dead lifecycle, rig adapter, cached per-tick samples, implausible-move flagging (last plausible position stays authoritative, telemetry counted), server teleports, flat-distance range checks (5 tests) |
+| BM-052 | Done   | 2026-11-15 | `Combat/Attributes`: four server-owned base attributes (ints 1..99), eight derived stats from fixed formulas, validated add/mul modifiers (order-independent: adds, then muls, then round to 1/100, then cap); `check-deps` gains the Combat layer rule (3 tests) |
+| BM-053 | Done   | 2026-11-15 | `Combat/Resources`: health/stamina/posture never below zero or above cap; spend-before-act with same-step competition; per-pool regen delays (stamina 1s, posture 2s); posture break at zero and recovery past half; clamp after cap changes; validate (4 tests) |
 
 ## Blockers
 

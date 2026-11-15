@@ -34,6 +34,7 @@ The dependency checker resolves every `require` and enforces this table. A
 | `client/*`           | `client/*`, `shared/*`                              | `server/*`, `tests/*`                  |
 | `server/Config/*`    | `server/Config/*`, `shared/*`                       | every other server area                |
 | `server/Logging/*`   | `server/Logging/*`, `shared/*`                      | every other server area                |
+| `server/Combat/*`    | `server/Combat/*`, `Logging`, `shared/*`           | Services, Network, Persistence (pure simulation)   |
 | `server/Operations/*` | `Services`, `Persistence`, `Content`, `Logging`, `shared/*` | nothing may depend on it except Bootstrap |
 | `server/Services/*`  | `server/Services/*` (acyclic), `Persistence`, `Content`, `Config`, `shared/*` | `server/Network/*`, `client/*`, `tests/*` |
 | `server/Network/*`   | `server/Network/*`, `server/Services/*`, `shared/*` | `client/*`, `tests/*`                  |
