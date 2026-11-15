@@ -120,7 +120,7 @@ depend on earlier stages.
 | ----- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
 | 1     | Config and feature flags, ContentRegistry validation, logger, clock, RNG | Abort server start; log the reason. Nothing else loads.         |
 | 2     | ProfileService (leases, save queue), RewardService                       | Abort server start. No fabricated profiles.                     |
-| 3     | Combat, Cant, Verse, Burden, Quest, Waymark, Travel, Descent, Party      | Abort server start.                                             |
+| 3     | CharacterService, CombatService (combat layer), Cant, Verse, Burden, Quest, Waymark, Travel, Descent, Party | Abort server start.                                             |
 | 4     | Validators, adapters, RequestDispatcher, remotes created                 | Abort; remotes must not exist half-wired.                       |
 | 5     | `Players.PlayerAdded` handling, per-player session activation            | Per player: non-mutating loading/error state, never empty data. |
 

@@ -28,6 +28,36 @@ export type TravelReadyPayload = {
 	revision: number, -- current travel roster revision
 }
 
+-- CombatInput. Owning task BM-061. `kind` is the legal action enum: timed
+-- actions go to the simulation as intents, the Lock/Unlock/CycleTarget kinds
+-- are validated lock-on requests. `sequence` is per-player monotonic for
+-- intents (ignored for lock kinds). `target` is only a preference: the
+-- server finds hits itself and validates any lock.
+export type CombatInputKind =
+	"Attack"
+	| "Dodge"
+	| "Guard"
+	| "Parry"
+	| "Release"
+	| "Lock"
+	| "Unlock"
+	| "CycleTarget"
+
+export type CombatInputPayload = {
+	kind: CombatInputKind,
+	sequence: number, -- integer 1 .. Limits.MAX_REVISION
+	target: string?, -- combatant id, opaque, <= 64 bytes
+}
+
+export type CombatInputResultData = {
+	kind: CombatInputKind,
+	sequence: number,
+	-- For intents: queued for the next simulation step. Whether it then
+	-- starts is reported by the acknowledgement and private cues.
+	queued: boolean,
+	target: string?,
+}
+
 -- Session bootstrap. Owning task BM-017.
 export type ClientHelloPayload = {
 	protocolVersion: number,

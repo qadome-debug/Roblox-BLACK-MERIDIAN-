@@ -14,6 +14,7 @@ export type Validator = (raw: unknown) -> (unknown?, string?)
 
 local REGISTRY: { [Actions.ActionName]: Validator } = {
 	ClientHello = require(script.ClientHello) :: Validator,
+	CombatInput = require(script.CombatInput) :: Validator,
 	QuestChoice = require(script.QuestChoice) :: Validator,
 	TravelReady = require(script.TravelReady) :: Validator,
 }

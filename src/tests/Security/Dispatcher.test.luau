@@ -394,7 +394,7 @@ suite:case(
 			h.dispatcher:register(adapter("QuestChoice"))
 		end, "already registered")
 		Assert.throws(function()
-			h.dispatcher:register(adapter("CombatInput"))
+			h.dispatcher:register(adapter("CantEquip"))
 		end, "no payload validator")
 		Assert.deepEqual(
 			h.dispatcher:registeredActions(),

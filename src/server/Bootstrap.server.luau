@@ -9,8 +9,11 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local CharacterService = require(script.Parent.Services.CharacterService)
 local ClientHello = require(script.Parent.Network.Adapters.ClientHello)
 local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
+local CombatInput = require(script.Parent.Network.Adapters.CombatInput)
+local CombatService = require(script.Parent.Services.CombatService)
 local Config = require(script.Parent.Config)
 local Dispatcher = require(script.Parent.Network.Dispatcher)
 local Logger = require(script.Parent.Logging.Logger)
@@ -22,6 +25,7 @@ local Rng = require(ReplicatedStorage.Shared.Sim.Rng)
 local Session = require(script.Parent.Network.Session)
 local Telemetry = require(script.Parent.Logging.Telemetry)
 local UnavailableStore = require(script.Parent.Persistence.UnavailableStore)
+local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
 
 -- Stage 1: configuration, clock, logging.
 local function detectEnvironment(): Config.Environment
@@ -124,7 +128,75 @@ local profiles = ProfileService.new({
 	end,
 })
 
--- Stage 3: gameplay services are added by the tasks that own them.
+-- Stage 3: gameplay services.
+-- Characters: the server reads positions from the character rig it owns
+-- and never from anything a client sends.
+local characters = CharacterService.new({ clock = clock, logger = logger, telemetry = telemetry })
+local rootParts: { [number]: BasePart } = {}
+
+local function rigFor(character: Model): CharacterService.Rig
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	return {
+		position = function()
+			local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root == nil then
+				return nil
+			end
+			local p = root.Position
+			return Vec3.new(p.X, p.Y, p.Z)
+		end,
+		moveState = function()
+			if humanoid == nil then
+				return "Unknown"
+			end
+			local state = humanoid:GetState()
+			if
+				state == Enum.HumanoidStateType.Running
+				or state == Enum.HumanoidStateType.RunningNoPhysics
+			then
+				local speed = humanoid.MoveDirection.Magnitude
+				return if speed > 0 then "Walking" else "Idle"
+			elseif
+				state == Enum.HumanoidStateType.Freefall
+				or state == Enum.HumanoidStateType.Jumping
+			then
+				return "Airborne"
+			elseif state == Enum.HumanoidStateType.Swimming then
+				return "Swimming"
+			elseif state == Enum.HumanoidStateType.Climbing then
+				return "Climbing"
+			elseif state == Enum.HumanoidStateType.Seated then
+				return "Seated"
+			end
+			return "Unknown"
+		end,
+		teleport = function(to)
+			character:PivotTo(CFrame.new(to.x, to.y, to.z))
+		end,
+	}
+end
+
+local combat = CombatService.new({
+	clock = clock,
+	rng = serverRng,
+	logger = logger,
+	telemetry = telemetry,
+	send = function(userId, remote, payload)
+		local player = Players:GetPlayerByUserId(userId)
+		if player ~= nil then
+			(remotes[remote] :: any):FireClient(player, payload)
+		end
+	end,
+	poseOf = function(userId)
+		local snapshot = characters:sample(userId)
+		local root: BasePart? = rootParts[userId]
+		if snapshot == nil or root == nil then
+			return nil
+		end
+		local look = root.CFrame.LookVector
+		return { position = snapshot.position, facing = Vec3.new(look.X, look.Y, look.Z) }
+	end,
+})
 
 -- Stage 4: dispatcher and adapters.
 local limiter = RateLimiter.new({ clock = clock })
@@ -137,11 +209,36 @@ local dispatcher = Dispatcher.new({
 	limiter = limiter,
 })
 dispatcher:register(ClientHello.new({ sessions = sessions, clock = clock }))
+dispatcher:register(CombatInput.new({ combat = combat }))
 dispatcher:attach(remotes[Protocol.REMOTES.ACTION_REQUEST], remotes[Protocol.REMOTES.ACTION_RESULT])
 
 -- Stage 5: player sessions and profiles.
+local function onCharacterAdded(player: Player, character: Model)
+	rootParts[player.UserId] = character:WaitForChild("HumanoidRootPart", 10) :: BasePart
+	characters:onCharacterAdded(player.UserId, rigFor(character))
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid ~= nil then
+		humanoid.Died:Connect(function()
+			characters:onDied(player.UserId)
+		end)
+	end
+	if not combat:hasPlayer(player.UserId) then
+		combat:addPlayer(player.UserId)
+	end
+end
+
 local function onPlayerAdded(player: Player)
 	sessions:onPlayerAdded(player :: any)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
+	player.CharacterRemoving:Connect(function()
+		characters:onCharacterRemoving(player.UserId)
+		rootParts[player.UserId] = nil
+	end)
+	if player.Character ~= nil then
+		onCharacterAdded(player, player.Character :: Model)
+	end
 	-- Loading yields on the DataStore; keep the join handler responsive.
 	task.spawn(function()
 		local ok, err = pcall(function()
@@ -165,6 +262,9 @@ Players.PlayerRemoving:Connect(function(player)
 			:with({ playerId = player.UserId })
 			:error("persistence", "player_leave_crashed", { error = tostring(err) })
 	end
+	combat:removePlayer((player :: any).UserId)
+	characters:onCharacterRemoving((player :: any).UserId)
+	rootParts[(player :: any).UserId] = nil
 	sessions:onPlayerRemoving(player :: any)
 	limiter:forget((player :: any).UserId)
 end)
@@ -175,6 +275,7 @@ end
 -- Maintenance tick: about once a second, never faster.
 local accumulator = 0
 RunService.Heartbeat:Connect(function(dt)
+	combat:tick(dt)
 	accumulator += dt
 	if accumulator >= 1 then
 		accumulator = 0

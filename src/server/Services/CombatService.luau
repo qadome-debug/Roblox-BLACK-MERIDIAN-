@@ -94,7 +94,7 @@ CombatService.ENEMY_TEAM = "enemies"
 CombatService.DEFAULT_REPLICATE_INTERVAL = 1 / 20
 
 local function playerId(userId: number): string
-	return "p:" .. tostring(userId)
+	return "p-" .. tostring(userId)
 end
 
 function CombatService.new(deps: Deps): Service

@@ -50,10 +50,10 @@ end
 suite:case("registered validators match the plan's fixed contracts", function()
 	Assert.deepEqual(
 		Validators.registered(),
-		{ "ClientHello", "QuestChoice", "TravelReady" },
+		{ "ClientHello", "CombatInput", "QuestChoice", "TravelReady" },
 		"registered set"
 	)
-	Assert.isNil(Validators.forAction("CombatInput"), "no validator yet for CombatInput")
+	Assert.isNil(Validators.forAction("CantEquip"), "no validator yet for CantEquip")
 end)
 
 suite:case("QuestChoice accepts the 3.4 contract and returns a fresh typed copy", function()
