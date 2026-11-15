@@ -71,7 +71,20 @@ export type Deps = {
 	now: () -> number,
 }
 
+-- Any DataStore-like object (profiles, run records). The persistence layer
+-- is the only place that writes to one.
+export type RawStore = Lease.Store
+
 export type Store = {
+	-- Writes a non-profile record (run results, archives) through the same
+	-- single write site. The transform returns the new value or nil to
+	-- cancel. Outcome classification matches mutate().
+	writeRecord: (
+		self: Store,
+		store: RawStore,
+		key: string,
+		transform: (old: any) -> any
+	) -> "committed" | "cancelled" | "uncertain",
 	mutate: (
 		self: Store,
 		key: string,
@@ -209,6 +222,32 @@ function ProfileStore.new(deps: Deps): Store
 			bytes = committedBytes,
 			sizeVerdict = verdictOut :: any,
 		}
+	end
+
+	function store:writeRecord(
+		rawStore: RawStore,
+		key: string,
+		transform: (old: any) -> any
+	): "committed" | "cancelled" | "uncertain"
+		local wrote = false
+		local ok, err = pcall(function()
+			rawStore:UpdateAsync(key, function(old)
+				local value = transform(old)
+				if value ~= nil then
+					wrote = true
+				end
+				return value
+			end)
+		end)
+		if not ok then
+			deps.logger:warn(
+				"persistence",
+				"record_write_uncertain",
+				{ key = key, error = tostring(err) }
+			)
+			return "uncertain"
+		end
+		return if wrote then "committed" else "cancelled"
 	end
 
 	function store:read(key: string): (any, string?)

@@ -47,6 +47,12 @@ when its code compiled.
 | BM-037 | Done   | 2026-11-14 | `Receipts.seasonalGrant` with a retention policy: duplicate, closed-season and future-season grants refused; ledger prunes only closed seasons under pressure, then fails closed |
 | BM-038 | Done   | 2026-11-14 | `Receipts.recordIntent` durable pending intents (max 32, fail closed); an intent survives a simulated crash and is fulfilled by the next owner, which clears it in the same write |
 | BM-039 | Done   | 2026-11-14 | `Persistence/Grant.apply` all-or-nothing currencies, items, deterministic instances and unlocks; a failing grant leaves no receipt and no partial change (8 receipt tests) |
+| BM-040 | Done   | 2026-11-14 | `RewardService.compensate`: operator, case and reason required; receipt derived from the case ID so repeats are no-ops; every attempt logged and counted |
+| BM-041 | Done   | 2026-11-14 | `RewardService.recoverPending` re-issues grants for pending intents under their original IDs; crash-after-intent recovered by the next owner without duplication |
+| BM-042 | Done   | 2026-11-14 | `RewardService.recordRunResult` writes a durable run record (never rewritten) with traceable receipt IDs per player and slot, then grants seasonally; replay yields duplicates only |
+| BM-043 | Done   | 2026-11-14 | Telemetry events `reward_granted`, `reward_duplicate`, `reward_refused`, `reward_recovered`, `reward_compensation`, `descent_run_recorded` carry reward, receipt, source and player; logs carry correlation and player IDs |
+| BM-045 | Done   | 2026-11-14 | `Services/RewardService` is the single facade: catalog lookup, source check, deterministic receipt, intent-then-grant flow, duplicate detection before any write (7 tests) |
+| BM-046 | Done   | 2026-11-14 | `RewardService.reconcile` settles uncertain writes by reading, retries stale intents under the same IDs, escalates intents past the window or with vanished rewards |
 
 ## Blockers
 
