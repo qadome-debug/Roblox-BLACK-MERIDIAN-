@@ -200,6 +200,11 @@ local function layerViolation(from: { string }, to: { string }): string?
 		end
 		return nil
 	end
+	local toName: string = (toArea :: any) or ""
+	local fromName: string = (fromArea :: any) or ""
+	if toName == "Operations" and fromName ~= "Operations" and fromName ~= "Bootstrap" then
+		return "only Bootstrap may depend on Operations"
+	end
 	if
 		(fromArea == "Persistence" or fromArea == "Content")
 		and (toArea == "Services" or toArea == "Network")
