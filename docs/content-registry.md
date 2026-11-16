@@ -14,7 +14,7 @@ introduce an ID.
 | chapter   | `chapter-`  | `order` (unique positive integer)                      |
 | region    | `region-`   | `waymarkIds`, `travelLinkIds` (regions reachable from here) |
 | quest     | `quest-`    | `chapterId`, `regionId`                                |
-| cant      | `cant-`     | `starterEligible`, `verseIds`                          |
+| cant      | `cant.`     | `starterEligible`, `verseIds`                          |
 | verse     | `verse-`    | `cantId`                                               |
 | burden    | `burden-`   | —                                                      |
 | waymark   | `waymark-`  | `rank`, `regionId` (optional until the region is named) |
@@ -27,8 +27,14 @@ BM-073, BM-083). This registry establishes identity, not behaviour.
 
 ## ID rules
 
-- Lowercase ASCII letters, digits and hyphens: `^[a-z0-9][a-z0-9-]*$`.
-- Starts with the category prefix.
+- Lowercase ASCII letters, digits, dots, underscores and hyphens. Starts
+  and ends with a letter or digit; never two dots in a row.
+- Report style, approved 2026-11-16: a Cant is `cant.<name>`
+  (`cant.nearness`); a Verse is `<namespace>.<name>` (`near.close_step`),
+  where every Verse of one Cant shares a namespace and no two Cants share
+  one.
+- Other categories still start with their old hyphen prefix until their
+  report-style IDs are approved (`docs/id-proposals.md`).
 - At most 48 bytes (`Limits.MAX_CANONICAL_ID_BYTES`).
 - Unique across all categories, so a receipt or save field holding an ID is
   unambiguous without its category.
@@ -52,7 +58,11 @@ bad data (construction stage 1 in `docs/architecture.md`).
 
 Only items the design has named so far:
 
-- `cant-nearness` — Nearness, the vertical-slice Cant, starter eligible.
+- `cant.nearness`, `cant.embers`, `cant.second_voice`,
+  `cant.still_water` — the four launch Cants. None is owned at character
+  creation; Nearness is acquired in the introductory story.
+- `near.close_step`, `near.draw_near`, `near.between_us`,
+  `near.no_farther` — the four Nearness Verses.
 - `waymark-i` — Waymark I, rank 1. Its region is unset until the first
   playable region's canonical name is supplied.
 

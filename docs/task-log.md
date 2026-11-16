@@ -35,7 +35,7 @@ now Built and Held. Result for BM-001 to BM-069: 6 accepted,
 | BM-001 | Built | Yes | 2026-11-12 | `rojo build` clean; both bootstraps printed in a Studio playtest |
 | BM-002 | Built | Yes | 2026-11-12 | Clean Rokit install on Windows; format, lint, type check, build all pass |
 | BM-003 | Built | Yes | 2026-11-12 | `docs/architecture.md`; `tools/check-deps.luau` self-test passes on clean, cycle, layer and unresolved fixtures; repo check passes |
-| BM-004 | Framework | No: own gap | 2026-11-12 | NOT ACCEPTED: the registry holds 2 canonical IDs (Nearness, Waymark I); the rest of the inventory is missing. `ContentRegistry` validates and freezes `Content.luau`; 25 tests cover duplicate, invalid, missing-reference, wrong-category, type and consistency fixtures. Only Nearness and Waymark I are registered pending the inventory |
+| BM-004 | Framework | No: own gap | 2026-11-16 | NOT ACCEPTED: most of the inventory is still missing. The ID format of the design report is supported (dots and underscores; `cant.<name>`; Verses `<namespace>.<name>` with one namespace per Cant) after an audit of every stored and matched ID. Registered: the four launch Cants, the four Nearness Verses, Waymark I (old-style ID). Proposed IDs for Ash Quay, Lantern Vault, Lantern Maw, Waymark I and the two Nearness Burdens wait for approval (`docs/id-proposals.md`). Schema v3 migration carries the old Nearness ID over in saved data |
 | BM-005 | Built | Held by BM-004 | 2026-11-12 | `Contracts/{Actions,Protocol,Payloads}`, `Types/Profile`, `Constants/Limits` type-check in strict mode; `tools/check-contracts.luau` finds no `any`; 6 contract tests pass |
 | BM-006 | Built | Yes | 2026-11-12 | `server/Config` builds frozen config per environment; 9 tests cover invalid config, production override refusal, and every experimental flag defaulting off in every environment |
 | BM-007 | Built | Yes | 2026-11-12 | `shared/Sim/{Clock,Rng,FixedStep}`; 13 tests including a seeded simulation replayed to an identical trace and a pinned known sequence |
@@ -93,14 +93,14 @@ now Built and Held. Result for BM-001 to BM-069: 6 accepted,
 | BM-059 | Built | Held by BM-004, BM-010 | 2026-11-15 | `Combat/Targeting`: server-granted lock-on (exists, alive, hostile, in range, in sight), nearest-first `cycle`, per-step re-validation with grace period, drops on death/removal/clear, engagement from server-resolved damage with timeout, `engage` for other systems; hits never consult the lock (6 tests) |
 | BM-060 | Built | Held by BM-004, BM-010 | 2026-11-15 | `Contracts/CombatReplication` (public view: state/phase/actionId/health fraction; own view adds exact resources, lock, engagement, `ackSequence`), `Combat/Replication` (change tracking, incremental deltas, full resync after the history window or a future revision, bounded public cues, private rejections only to the owner), `Services/CombatService` (owns the stack, player↔combatant mapping, server-sampled poses, per-step hooks, replication through injected remotes), client `CombatState` (applies deltas/cues, prediction reconciled by the ack) (4 + 3 tests) |
 | BM-061 | Built | Held by BM-004, BM-010 | 2026-11-15 | `CombatInput` contract (kinds Attack/Dodge/Guard/Parry/Release/Lock/Unlock/CycleTarget, bounded sequence, optional opaque target), strict validator, adapter forwarding to CombatService (NOT_READY without a combatant, REJECTED with the simulation's fixed reason); Bootstrap stage 3 wires CharacterService (Roblox rig adapter) and CombatService (remote sender, server-sampled poses, heartbeat tick, join/leave); security tests: malformed payloads, stale sequences, spam vs the combat rate class, forged targets, no combatant (6 tests) |
-| BM-062 | Framework | No: own gap; waits on BM-004 | 2026-11-15 | NOT ACCEPTED: only Nearness is defined; slot count and unlock kinds are assumptions, not canon. Server `CantCatalog`: typed definitions (unlock rule starter/waymark/quest, legal slots primary/secondary, symmetric exclusions, compatible Verse IDs, mechanics canonical/provisional), validated against the canonical registry (no fabricated or missing Cants, Verse lists must match, unlock refs canonical, starter flag consistent); `resolve`, `isUnlocked` from server facts, `canSlot`, `isVerseCompatible`, `checkLoadout`; production catalog defines Nearness only, mechanics provisional pending the design inventory (10 tests) |
-| BM-063 | Framework | No: own gap; waits on BM-004, BM-010, BM-062 | 2026-11-15 | NOT ACCEPTED: PLACEHOLDER kit (invented cooldown and cost, effect only announces activation); no client request activates a Cant. Server Cant activation layer in the combat simulation: equip (server-owned, catalog-checked, not mid-action), activate gated by equipped Cant, alive, allowed combat state, step-counted cooldown that survives swapping, atomic resource cost; validated kits; `cant_activated` public cue; wired into CombatService (`service.cants`, forgotten on leave). Nearness kit is provisional: placeholder numbers and an effect that only announces activation, because its canonical mechanics are not in the repository (8 tests). Blocked: Nearness mechanics |
-| BM-064 | Framework | No: own gap; waits on BM-004, BM-010, BM-062, BM-063 | 2026-11-15 | NOT ACCEPTED: depends on BM-063; only the primary slot is saved; no flow lets a player own a Cant yet (starter selection is BM-106). Verified technically in Studio 2026-11-16. `CantEquip` contract and strict validator (slot enum, optional registry Cant ID); adapter checks catalog, ownership from `cants.unlocked` (UNAUTHORIZED, security log), slot legality, duplicate/empty equips, busy combatant, then mirrors into the combat Cant layer and saves `cants.equipped` through new `ProfileService:profileFor/mutate` (schema-checked, queued, rolled back on refusal); only the primary slot is backed until a profile migration adds a second; registered in Bootstrap (7 security tests + 1 ProfileService test) |
-| BM-065 | Framework | No: own gap; waits on BM-004, BM-062 | 2026-11-15 | NOT ACCEPTED: no canonical Verse is defined; cost, timing and prerequisite shapes are assumptions. Server `VerseCatalog`: typed definitions (Cant, up to three distinct pool costs bounded to (0, 1000], integer cast/cooldown steps with caps, prerequisites of same-Cant Verses plus optional Waymark/quest, mechanics flag) validated against the registry (no fabricated or missing Verses, registry Cant must match, canonical prerequisite refs, no self-requirement or cycles); `resolve`, `forCant`, `isCompatible`, `prerequisitesMet` from server facts; production list empty until canonical Verse names arrive (6 tests) |
-| BM-066 | Blocked | No: own gap; waits on BM-063, BM-065 | 2026-11-15 | Needs the canonical Nearness Verse names and mechanics; the Verse catalog, cast pipeline and adapter are ready to take them |
-| BM-067 | Framework | No: own gap; waits on BM-004, BM-010, BM-065, BM-066 | 2026-11-15 | NOT ACCEPTED: depends on BM-066 (blocked); with real content only refusals run, the successful cast is tested with fixture Verses only. Server Verse cast pipeline in the combat simulation (alive, not mid-action, one cast at a time, catalog-defined, compatible with the equipped Cant, per-Verse step cooldown, all-or-nothing costs, target hint verified for existence/self/liveness/range; cast time, interruption by Hit/Staggered/Dead with costs and cooldown kept, fizzle on lost target, server-only effects; public cues); `VerseCast` contract, validator and adapter (catalog check, profile unlock check as UNAUTHORIZED, combatant); CombatService takes injected Cant/Verse catalogs, kits and effects; shared test content fixtures (7 security tests) |
-| BM-068 | Framework | No: own gap; waits on BM-004, BM-010, BM-067 | 2026-11-15 | NOT ACCEPTED: PLACEHOLDER thresholds, rise-on-Verse and decay are assumptions; no canonical action; the saved `burdens.dissonance` field is not used. Server Dissonance layer: per-combatant meter raised only by the server (resolved Verses via a pipeline hook), clamped, numbered levels at ascending thresholds with one event per change, decay after a quiet period, validated tuning; data-driven actions (min level, consume/add, step cooldown, server effect); `DissonanceAction` contract/validator (action name only, no meter values) and adapter; public cues; deterministic-replay test (6 tests). Tuning is provisional and the production action list is empty: canonical thresholds, rates and actions are not in the repository. Own-view meter replication is still to add |
-| BM-069 | Framework | No: own gap; waits on BM-004, BM-062 | 2026-11-15 | NOT ACCEPTED: no canonical Burden is defined; sources, stacking and modifier-only consequences are assumptions. Server `BurdenCatalog`: typed definitions (acquisition sources descent/boss/quest/waymark, symmetric canonical incompatibilities, maxStacks 1..5, up to four derived-stat modifiers with add within half the stat cap and mul in 0.5..1.5, mechanics flag) validated against the registry; `resolve`, `compatible(held, candidate)`, `modifiersFor(stacks)` clamped to maxStacks and attribute limits; production list empty until canonical Burdens arrive; Burdens added to the shared test fixtures (5 tests) |
+| BM-062 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: Embers, Second Voice and Still Water have no Verses, Burdens or acquisition yet. All four launch Cants are defined. Nearness: acquired in the introductory story (unlock kind "story"), separate from Waymark I, all four Verses listed, mechanics canonical. The other three: "undetermined" unlock that can never be satisfied. Approved: one slot to start, the second at Waymark II; only the first slot is implemented |
+| BM-063 | Framework | No: own gap; waits on BM-062, BM-066, BM-069 | 2026-11-16 | NOT ACCEPTED: Nearness works when its four Verses and its Burden work, and none of them is complete. The unsupported standalone Cant activation, the placeholder Nearness kit and its cue were removed (approval A2). A Cant is now an equipped discipline with no ability of its own; tests assert the layer offers only equip, equipped and forget |
+| BM-064 | Framework | No: own gap; waits on BM-062, BM-063 | 2026-11-16 | NOT ACCEPTED: no flow grants Nearness in normal play (introductory story not built); the safe-anchor swap rule is approved as a proposal but anchors do not exist yet. Equip request, ownership check, save and restore work with the new IDs; verified in Studio 2026-11-16 |
+| BM-065 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: costs, cast times and Dissonance gain of the Nearness Verses are not approved. Cooldowns are stored in seconds and converted to steps at the simulation's step length. The four Nearness Verses are defined with their confirmed cooldowns (7, 11, 16, 24 s) and are provisional; any value not approved is left unset, and a canonical Verse must have all of them |
+| BM-066 | Blocked | No: own gap; waits on BM-063, BM-065 | 2026-11-16 | Needs the decision sheet (`docs/decision-sheet.md`, sections 1 to 5). The four Verses are registered and refuse to cast ("verse not available") until then; nothing is spent and no cooldown starts |
+| BM-067 | Framework | No: own gap; waits on BM-065, BM-066 | 2026-11-16 | NOT ACCEPTED: depends on BM-066. The pipeline refuses Verses whose costs or cast time are unset. Engine work still to do for the Nearness Verses: aim in the request, world queries, server movement, timed zones and tethers |
+| BM-068 | Framework | No: own gap; waits on BM-067 | 2026-11-16 | NOT ACCEPTED: amounts, recovery rates and what each band does are not approved. Built from canon: 0 to 100 in the five bands (40, 65, 85, 100) with their names; named gain sources (Verse, Relic, unstable area, enemy attack, failed containment) and recovery sources (stable environment, anchor, camp, consumable, encounter completion, cooperative); no decay over time; passive recovery only in a stable environment and only with an approved rate; reaching 100 announces a rupture handed to the region or encounter; never saved; no player-triggered actions. A resolved Verse adds its own stated Dissonance (none yet). The old placeholder thresholds and decay are gone |
+| BM-069 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: the two Nearness Burdens wait for their IDs and values. A Burden now belongs to a Cant as its default or a mastery Burden; at most one default per Cant; effects are names with bounded numeric parameters; `activeFor` gives the default unless mastery is unlocked and the choice belongs to the Cant. The unsupported pickup model (sources, stacks, stat-only modifiers) was removed |
 
 ## What holds acceptance
 
@@ -115,6 +115,34 @@ without new work in those tasks.
 | BM-062 to BM-069 | Cant, Verse, Dissonance and Burden content and mechanics | Designer | Each other, and BM-070 onward |
 
 The exact information needed for each is in `docs/design-requests.md`.
+
+## Implementation of approved decisions 2026-11-16
+
+The designer approved A1 (IDs), A2 (no Cant activation), A3 (loadout),
+the confirmed Verse behaviours and cooldowns, the Dissonance bands,
+sources and recovery routes, and the Cant-bound Burden model. The parts
+that need no further numbers were built. Gameplay acceptance stays open
+for every task in the group.
+
+| Area | What changed |
+| ---- | ------------ |
+| IDs | Audited every place an ID is stored or matched before changing the format. The registry accepts the report's format. One saved-data change: schema v3 migrates `cant-nearness` to `cant.nearness` in unlocked Cants, Verse unlocks and the equipped Cant, and leaves everything else as it was |
+| Bug found in Studio | The profile validator recovered a Cant ID from the end of a dotted path, so `cant.nearness` was read as `nearness` and every Nearness Verse unlock was refused. Quests had the same latent bug. The validator now receives the key itself. Regression test added |
+| Cants | Standalone activation removed. Four launch Cants defined |
+| Verses | Cooldowns in seconds. Four Nearness Verses registered with confirmed cooldowns; not castable until approved |
+| Dissonance | Five bands, named sources, no time decay, stable-area recovery only, rupture hand-off, never saved |
+| Burdens | Cant-bound default and mastery Burdens; pickup model removed |
+| Security and receipts | Unchanged. No request, check or receipt rule was relaxed. Play-test shortcuts stay in the Studio-only harness |
+
+Results: 410 tests and all 16 `check-all` steps pass. Studio play-test
+56 of 56 with no script errors: an unowned Verse is UNAUTHORIZED, each
+Nearness Verse is refused without spending anything, Dissonance crosses
+into Noticeable instability at exactly 40, does not decay by itself, and
+recovers through a named source.
+
+Open for approval: `docs/decision-sheet.md` (missing values with
+provisional recommendations) and `docs/id-proposals.md` (six machine
+IDs).
 
 ## Design reconciliation 2026-11-16
 
@@ -242,7 +270,7 @@ Full record: `docs/reviews/2026-11-16-playtest.md`.
 
 - `check-all`: 16 steps pass locally (format, lint, type checks, layer
   rules, contracts, remotes, persistence writes, test isolation,
-  production isolation, 402 tests, failing fixture, build).
+  production isolation, 410 tests, failing fixture, build).
 - CI runs the same command on every push.
 
 ## Testing gaps kept open
@@ -261,8 +289,10 @@ production data has been read or written.
 
 ## Known gaps that are later tasks, not bugs
 
-- No client request activates a Cant, and no flow lets a player own one
-  (BM-106).
+- No flow lets a player own a Cant in normal play. Nearness comes from
+  the introductory story, which is not built yet.
+- The client has no input for Verses, and the cast request has no aim
+  yet.
 - Combat death is not linked to the Roblox character, and there is no
   respawn request (BM-079).
 - The client has no input bindings or HUD; it only receives state.
@@ -276,10 +306,11 @@ production data has been read or written.
 
 ## Blockers
 
-- **Design approvals.** `docs/design-integration-checklist.md`, section
-  6, lists 13 questions (A1 to A13). A1 to A8 are needed to finish
-  Nearness, its Verses and Dissonance; A10 and A11 for the first Burden.
-  BM-070 stays on hold until BM-062 to BM-069 are finished.
+- **Design values.** `docs/decision-sheet.md` lists the numbers still
+  needed for the four Nearness Verses, Dissonance amounts and the two
+  Nearness Burdens, each with a provisional recommendation.
+  `docs/id-proposals.md` lists six machine IDs to approve. BM-070 stays
+  on hold until BM-062 to BM-069 are finished.
 - **The 22-part report.** It is the primary design reference and is not
   in the repository. Adding it would answer most open questions directly.
 - **Branch protection (BM-010).** Needs the repository owner to require

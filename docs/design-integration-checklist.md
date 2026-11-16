@@ -4,6 +4,43 @@ Status: 2026-11-16. This document reconciles the original Black Meridian
 design with the code that exists. No gameplay code was changed to produce
 it.
 
+**Update, same day (implementation).** The designer answered A1, A2,
+A3, A7 and A8 in part, A10 and A11 in part, and the Verse behaviours and
+cooldowns. Those answers are implemented; see `docs/task-log.md`,
+"Implementation of approved decisions". The numbers still open are in
+`docs/decision-sheet.md`, and six machine IDs in `docs/id-proposals.md`.
+The approved answers, recorded here for traceability:
+
+- A1: the report's ID format; IDs `cant.nearness`, `cant.embers`,
+  `cant.second_voice`, `cant.still_water`, `near.close_step`,
+  `near.draw_near`, `near.between_us`, `near.no_farther`. Other IDs are
+  proposed separately.
+- A2: no Cant has an ability of its own; Verses are the techniques.
+- A3: one Cant slot to start, the second at Waymark II; only the first is
+  built for the vertical slice. Swapping at designated safe anchors is the
+  proposed rule, marked for final gameplay approval.
+- Dissonance bands: 0–39 Stable or manageable, with minor Burden
+  pressure; 40–64 noticeable visual and audio instability; 65–84 enemy
+  and environmental reactions; 85–99 fractured events possible; 100 a
+  controlled rupture determined by the region or encounter, never
+  arbitrary permanent inventory loss. Rises through Verse use, certain
+  Relics, unstable areas, enemy attacks and failed containment. Recovers
+  through stable environments, anchors, camps, approved consumables,
+  encounter completion and certain cooperative actions. Raw Dissonance
+  normally resets or recovers between sessions. No player-triggered
+  Dissonance actions until designed.
+- Burdens are tied to Cants and are not stackable pickups. Unwanted
+  Company: at higher Dissonance, hostile adjacency becomes more
+  dangerous, increasing the threat of certain nearby attacks. Long Way
+  Home: repeated Nearness movement without returning to stable ground
+  builds an increasing recovery penalty.
+- Close Step proposed tuning from the report: 16-stud range, 8
+  Dissonance. Not locked canon.
+- Starting story: Ash Quay, then Lantern Vault, where Nearness is
+  acquired; Lantern Maw is the first boss; Waymark I — Branded comes after
+  the required Descent objectives and the return with the discovered
+  evidence. Acquiring Nearness and earning Waymark I are separate moments.
+
 ## 1. Sources and their rank
 
 | Rank | Source | Where it is | How it is used |

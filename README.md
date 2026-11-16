@@ -192,6 +192,8 @@ harness loses its own Studio guard.
 | `docs/design-requests.md`     | The design information still needed, by task                    |
 | `docs/design-integration-checklist.md` | Confirmed canon, conflicts, and every open specification matched to its task and module |
 | `docs/implementation-plan-bm-062-069.md` | Planned changes to finish Cants, Verses, Dissonance and Burdens |
+| `docs/decision-sheet.md`      | Missing values for Nearness, Dissonance and Burdens, with provisional recommendations |
+| `docs/id-proposals.md`        | Proposed machine IDs awaiting approval                          |
 | `docs/content-registry.md`    | Canonical content ID rules and what the registry validates     |
 | `docs/ci.md`                  | What CI runs, its security posture, and branch protection      |
 
