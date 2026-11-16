@@ -2,6 +2,15 @@
 
 Status: 2026-11-16. Owner of the answers: the game designer.
 
+**Update, same day.** The designer supplied confirmed details from the
+original 22-part report. They are recorded, with what is still open, in
+`docs/design-integration-checklist.md`, which is now the live document
+for items 1 and 4 to 9 below (BM-004 and BM-062 to BM-069). The planned
+code changes are in `docs/implementation-plan-bm-062-069.md`. Items 2, 3
+and 10 to 13 below are unchanged and still open. The sentence below about
+the repository holding one design source remains true: the report itself
+has not been added to the repository.
+
 The repository holds one design source, `docs/technical-plan-2.0.md`. It
 defines the engineering tasks and states that the canonical content
 inventory is not included. It names Nearness and Waymark I and gives no

@@ -116,6 +116,39 @@ without new work in those tasks.
 
 The exact information needed for each is in `docs/design-requests.md`.
 
+## Design reconciliation 2026-11-16
+
+The designer supplied confirmed details from the original 22-part report:
+the four launch Cants, the four Nearness Verses with IDs and cooldowns,
+the two Nearness Burdens, the Dissonance bands, and the starting
+progression. No gameplay code was changed in response; statuses in the
+table above are unchanged.
+
+- `docs/design-integration-checklist.md` records the confirmed canon,
+  matches 62 specifications to their task and code module, and lists 13
+  approvals still needed. Values that are not established are marked as
+  needing approval; no placeholder was promoted.
+- `docs/implementation-plan-bm-062-069.md` gives the planned changes for
+  BM-062 to BM-069: definitions, effects, client input, validation,
+  persistence and tests, with a technical gate and a gameplay gate for
+  each task.
+- The 22-part report is not in the repository and was not found on the
+  development computer. Two older "Codex blueprint" packages were found.
+  They conflict with the report on Verse names, cooldowns, Burden names,
+  Dissonance structure and how Nearness is acquired. Nothing was taken
+  from them; the conflicts are listed in the checklist.
+
+Findings that change how existing tasks are read:
+
+| Task | Finding |
+| ---- | ------- |
+| BM-004 | The report writes IDs as `near.close_step`. The registry accepts only hyphenated IDs with a category prefix. A decision is needed before anything is registered |
+| BM-063 | The standalone Cant activation in `Combat/Cants.luau` has no support in the confirmed design, where a Cant is a discipline used through its Verses. Proposed for removal, pending approval |
+| BM-065 | The design gives cooldowns in seconds; the catalog stores steps. The confirmed cooldowns are 7, 11, 16 and 24 seconds |
+| BM-068 | Confirmed bands start at 40, 65, 85 and 100. The code's placeholder thresholds (25, 50, 75, 100) and its decay-everywhere rule are wrong against the design. Dissonance must not be saved; the unused profile field will be removed |
+| BM-069 | Burdens belong to a Cant, with a default and an alternate mastery Burden. The catalog's acquisition sources, stacking and stat-only effects are unsupported assumptions |
+| BM-070 | The plan's "Burden offers" may not fit a default Burden that comes with the Cant. A decision is needed before BM-070 starts |
+
 ## Review 2026-11-16 (second pass)
 
 ### BM-047 receipt archive audit
@@ -243,9 +276,12 @@ production data has been read or written.
 
 ## Blockers
 
-- **Design information.** `docs/design-requests.md` lists it by task.
-  BM-066 cannot start, BM-062 to BM-069 cannot be accepted, and BM-070 is
-  on hold until it arrives.
+- **Design approvals.** `docs/design-integration-checklist.md`, section
+  6, lists 13 questions (A1 to A13). A1 to A8 are needed to finish
+  Nearness, its Verses and Dissonance; A10 and A11 for the first Burden.
+  BM-070 stays on hold until BM-062 to BM-069 are finished.
+- **The 22-part report.** It is the primary design reference and is not
+  in the repository. Adding it would answer most open questions directly.
 - **Branch protection (BM-010).** Needs the repository owner to require
   the `checks` status on `main` in GitHub settings; steps in `docs/ci.md`.
 - **Original 96-task register.** Not available; the 136-task plan is used
@@ -253,8 +289,10 @@ production data has been read or written.
 
 ## Design information needed
 
-Moved to `docs/design-requests.md`, organised by task, with the systems
-each answer will change. In short:
+For BM-004 and BM-062 to BM-069 the live document is
+`docs/design-integration-checklist.md`. The remaining items are in
+`docs/design-requests.md`. The table below is the first-pass summary and
+is kept for reference:
 
 | Item | Tasks | Needed |
 | ---- | ----- | ------ |

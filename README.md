@@ -190,6 +190,8 @@ harness loses its own Studio guard.
 | `docs/architecture.md`        | Service ownership, layer rules, dependency injection, authority |
 | `docs/task-log.md`            | Which tasks are built and accepted, with evidence and blockers  |
 | `docs/design-requests.md`     | The design information still needed, by task                    |
+| `docs/design-integration-checklist.md` | Confirmed canon, conflicts, and every open specification matched to its task and module |
+| `docs/implementation-plan-bm-062-069.md` | Planned changes to finish Cants, Verses, Dissonance and Burdens |
 | `docs/content-registry.md`    | Canonical content ID rules and what the registry validates     |
 | `docs/ci.md`                  | What CI runs, its security posture, and branch protection      |
 
