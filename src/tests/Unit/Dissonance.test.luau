@@ -341,14 +341,13 @@ suite:case("initial amounts are configurable and every source uses its own", fun
 	custom.layer:recoverFrom("a", "camp")
 	Assert.equal(custom.layer:value("a"), 4, "configured camp")
 
-	for _, bad in
-		{
-			{ enemyAttackPerHit = 0 },
-			{ campRecovery = 101 },
-			{ ruptureResetTo = 100 },
-			{ campRecovery = 0 / 0 },
-		}
-	do
+	local badTunings: { any } = {
+		{ enemyAttackPerHit = 0 },
+		{ campRecovery = 101 },
+		{ ruptureResetTo = 100 },
+		{ campRecovery = 0 / 0 },
+	}
+	for _, bad in badTunings do
 		Assert.throws(function()
 			setup(env, { tuning = bad :: any })
 		end, "must be within", "bad tuning")
