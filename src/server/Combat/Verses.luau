@@ -4,18 +4,25 @@
 -- Server-resolved Verse casting inside the combat simulation. A cast is
 -- judged entirely from server state when it is requested:
 --
---   * the caster exists, is alive and is not mid-action;
+--   * the caster exists, is alive and is in a state the Verse allows;
 --   * it is not already casting;
 --   * the Verse is defined and compatible with the caster's equipped Cant;
 --   * that Verse's cooldown for this caster has elapsed;
 --   * every cost is affordable (all are spent together, or none);
---   * a target, when given, exists, is alive, is not the caster and is in
---     range. The target is a hint the server verifies, never a claim.
+--   * targets, when needed, exist, are alive, hostile (or the caster, for
+--     a pair), in range, in sight and not immune. They are hints the
+--     server verifies, never claims.
 --
--- A started cast resolves after the Verse's cast steps. Being hit,
--- staggered or killed first interrupts it: the cast fizzles, costs stay
--- spent and the cooldown stays running, so interrupting is never a free
--- retry. Effects run only on the server, with simulation state in hand.
+-- A started cast resolves after the Verse's cast time. Being staggered or
+-- killed first interrupts it (ordinary damage does not): the cast fizzles,
+-- costs stay spent and the cooldown stays running, so interrupting is never
+-- a free retry. Effects run only on the server, with simulation state in
+-- hand.
+--
+-- An effect returns false when it could not do anything (for example no
+-- valid destination). That cast also fizzles: cost and cooldown stay spent,
+-- and no Dissonance is gained. Dissonance is gained only when the Verse
+-- actually executes, never for an interrupted or empty cast.
 
 local ActionMachine = require(script.Parent.ActionMachine)
 local Cants = require(script.Parent.Cants)
@@ -27,11 +34,26 @@ export type Context = {
 	sim: Simulation.Simulation,
 	caster: Simulation.Combatant,
 	target: Simulation.Combatant?,
+	targetB: Simulation.Combatant?,
+	aim: Vec3.Vec3?,
+	params: { [string]: number },
 	verseId: string,
 	step: number,
 }
 
-export type Effect = (ctx: Context) -> ()
+-- Returns false when nothing happened; nil or true is success.
+export type Effect = (ctx: Context) -> boolean?
+
+export type Extra = { targetB: string?, aim: Vec3.Vec3? }
+
+export type Cast = {
+	verseId: string,
+	target: string?,
+	targetB: string?,
+	aim: Vec3.Vec3?,
+	startedStep: number,
+	resolveStep: number,
+}
 
 -- The parts of a Verse catalog the pipeline reads (VerseCatalog satisfies
 -- it; the simulation layer does not depend on Content).
@@ -41,6 +63,10 @@ export type VerseDef = {
 	costs: { { pool: Resources.Pool, amount: number } }?,
 	castSeconds: number?,
 	cooldownSeconds: number,
+	targeting: string?,
+	castFrom: { string }?,
+	effect: string?,
+	params: { [string]: number }?,
 }
 
 export type Catalog = {
@@ -51,16 +77,22 @@ export type Catalog = {
 export type Deps = {
 	catalog: Catalog,
 	cants: Cants.Layer,
+	-- By Verse ID, or by the definition's `effect` name.
 	effects: { [string]: Effect }?,
 	maxTargetRange: number?,
-	-- Called after a Verse resolves (e.g. to raise Dissonance).
+	lineOfSight: ((from: Vec3.Vec3, to: Vec3.Vec3) -> boolean)?,
+	-- Called after a Verse has actually executed (to raise Dissonance).
 	onResolved: ((casterId: string, verseId: string) -> ())?,
 }
 
-export type Cast = { verseId: string, target: string?, startedStep: number, resolveStep: number }
-
 export type Layer = {
-	cast: (self: Layer, id: string, verseId: string, target: string?) -> ActionMachine.Outcome,
+	cast: (
+		self: Layer,
+		id: string,
+		verseId: string,
+		target: string?,
+		extra: Extra?
+	) -> ActionMachine.Outcome,
 	casting: (self: Layer, id: string) -> Cast?,
 	cooldownRemaining: (self: Layer, id: string, verseId: string) -> number,
 	forget: (self: Layer, id: string) -> (),
@@ -69,7 +101,8 @@ export type Layer = {
 local Verses = {}
 
 Verses.DEFAULT_TARGET_RANGE = 40
-local CASTABLE_STATES: { [string]: boolean } = { Idle = true, Guarding = true }
+Verses.MAX_AIM = 100000
+local DEFAULT_CAST_FROM = { "Idle", "Guarding" }
 
 local function fail(reason: string): ActionMachine.Outcome
 	return { ok = false, reason = reason } :: any
@@ -77,9 +110,14 @@ end
 
 local OK: ActionMachine.Outcome = { ok = true } :: any
 
+-- Whether a combatant can be forced to move. Bosses cannot.
+function Verses.isImmune(combatant: Simulation.Combatant): boolean
+	return combatant.extra.displacement == "immune"
+end
+
 function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 	local effects = deps.effects or {}
-	local range = deps.maxTargetRange or Verses.DEFAULT_TARGET_RANGE
+	local defaultRange = deps.maxTargetRange or Verses.DEFAULT_TARGET_RANGE
 	-- The design gives times in seconds; the simulation counts steps.
 	local function toSteps(seconds: number): number
 		return math.max(0, math.floor(seconds / sim.stepSeconds + 0.5))
@@ -102,7 +140,55 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		return math.max(0, at - sim:stepNumber())
 	end
 
-	function layer:cast(id: string, verseId: string, targetId: string?): ActionMachine.Outcome
+	local function stateAllows(caster: Simulation.Combatant, castFrom: { string }): boolean
+		local state = caster.action.state :: string
+		if table.find(castFrom, state) ~= nil then
+			return true
+		end
+		return table.find(castFrom, "AttackRecovery") ~= nil
+			and state == "Attacking"
+			and (caster.action.phase :: string) == "Recovery"
+	end
+
+	-- Checks one target hint. Returns a refusal reason or nil.
+	local function checkTarget(
+		caster: Simulation.Combatant,
+		targetId: string,
+		range: number,
+		allowSelf: boolean,
+		refuseImmune: boolean
+	): string?
+		if targetId == caster.id then
+			return if allowSelf then nil else "cannot target yourself"
+		end
+		local target = sim:get(targetId)
+		if target == nil then
+			return "unknown target"
+		end
+		if (target.action.state :: string) == "Dead" or Resources.isDead(target.resources) then
+			return "target is dead"
+		end
+		if target.team == caster.team then
+			return "target is not hostile"
+		end
+		if Vec3.distance(caster.position, target.position) > range then
+			return "target out of range"
+		end
+		if deps.lineOfSight ~= nil and not deps.lineOfSight(caster.position, target.position) then
+			return "target not in sight"
+		end
+		if refuseImmune and Verses.isImmune(target) then
+			return "target immune"
+		end
+		return nil
+	end
+
+	function layer:cast(
+		id: string,
+		verseId: string,
+		targetId: string?,
+		extra: Extra?
+	): ActionMachine.Outcome
 		local caster = sim:get(id)
 		if caster == nil then
 			return fail("unknown combatant")
@@ -110,15 +196,15 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		if (caster.action.state :: string) == "Dead" or Resources.isDead(caster.resources) then
 			return fail("dead")
 		end
-		if not CASTABLE_STATES[caster.action.state :: string] then
+		local def: VerseDef? = deps.catalog:get(verseId)
+		if def == nil then
+			return fail("unknown verse")
+		end
+		if not stateAllows(caster, def.castFrom or DEFAULT_CAST_FROM) then
 			return fail("busy")
 		end
 		if casts[id] ~= nil then
 			return fail("already casting")
-		end
-		local def: VerseDef? = deps.catalog:get(verseId)
-		if def == nil then
-			return fail("unknown verse")
 		end
 		-- A registered Verse whose costs or cast time the design has not
 		-- set yet is known but not available. Nothing is assumed for it.
@@ -142,19 +228,50 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 				return fail("cannot afford")
 			end
 		end
+
+		local params: { [string]: number } = def.params or ({} :: { [string]: number })
+		local range = params.range or defaultRange
+		local refuseImmune = (params.refuseImmune or 0) ~= 0
+		local targeting = def.targeting
+		local aim = if extra ~= nil then extra.aim else nil
+		local targetB = if extra ~= nil then extra.targetB else nil
+		if aim ~= nil then
+			if not Vec3.isFinite(aim) then
+				return fail("bad aim")
+			end
+			if
+				math.abs(aim.x) > Verses.MAX_AIM
+				or math.abs(aim.y) > Verses.MAX_AIM
+				or math.abs(aim.z) > Verses.MAX_AIM
+			then
+				return fail("bad aim")
+			end
+		end
+		if targeting == "combatant" or targeting == "pair" then
+			if targetId == nil then
+				return fail("target required")
+			end
+		end
+		if targeting == "pair" then
+			if targetB == nil then
+				return fail("second target required")
+			end
+			if targetB == targetId then
+				return fail("targets must differ")
+			end
+		elseif targetB ~= nil then
+			return fail("unexpected second target")
+		end
 		if targetId ~= nil then
-			if targetId == id then
-				return fail("cannot target yourself")
+			local problem = checkTarget(caster, targetId, range, targeting == "pair", refuseImmune)
+			if problem ~= nil then
+				return fail(problem)
 			end
-			local target = sim:get(targetId)
-			if target == nil then
-				return fail("unknown target")
-			end
-			if (target.action.state :: string) == "Dead" or Resources.isDead(target.resources) then
-				return fail("target is dead")
-			end
-			if Vec3.distance(caster.position, target.position) > range then
-				return fail("target out of range")
+		end
+		if targetB ~= nil then
+			local problem = checkTarget(caster, targetB, range, true, refuseImmune)
+			if problem ~= nil then
+				return fail(problem)
 			end
 		end
 
@@ -168,11 +285,19 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		casts[id] = {
 			verseId = verseId,
 			target = targetId,
+			targetB = targetB,
+			aim = if aim ~= nil then Vec3.copy(aim) else nil,
 			startedStep = step,
 			resolveStep = step + toSteps(castSeconds),
 		}
 		sim:emit("verse_cast_started", id, { verseId = verseId, target = targetId })
 		return OK
+	end
+
+	local function alive(combatant: Simulation.Combatant?): boolean
+		return combatant ~= nil
+			and (combatant.action.state :: string) ~= "Dead"
+			and not Resources.isDead(combatant.resources)
 	end
 
 	local function resolve(id: string, cast: Cast, step: number)
@@ -182,25 +307,42 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 			return
 		end
 		local target = if cast.target ~= nil then sim:get(cast.target) else nil
+		local targetB = if cast.targetB ~= nil then sim:get(cast.targetB) else nil
 		if
-			cast.target ~= nil and (target == nil or Resources.isDead((target :: any).resources))
+			(cast.target ~= nil and not alive(target))
+			or (cast.targetB ~= nil and not alive(targetB))
 		then
 			sim:emit("verse_fizzled", id, { verseId = cast.verseId, reason = "target lost" })
+			return
+		end
+		local def: VerseDef? = deps.catalog:get(cast.verseId)
+		local effect = effects[cast.verseId]
+		if effect == nil and def ~= nil and def.effect ~= nil then
+			effect = effects[def.effect]
+		end
+		-- A Verse that names an effect nobody provides does nothing, and so
+		-- gains nothing: fail closed.
+		local succeeded = not (def ~= nil and def.effect ~= nil and effect == nil)
+		if effect ~= nil then
+			local result = effect({
+				sim = sim,
+				caster = caster,
+				target = target,
+				targetB = targetB,
+				aim = cast.aim,
+				params = if def ~= nil and def.params ~= nil then def.params else {},
+				verseId = cast.verseId,
+				step = step,
+			})
+			succeeded = result ~= false
+		end
+		if not succeeded then
+			sim:emit("verse_fizzled", id, { verseId = cast.verseId, reason = "no effect" })
 			return
 		end
 		sim:emit("verse_resolved", id, { verseId = cast.verseId, target = cast.target })
 		if deps.onResolved ~= nil then
 			deps.onResolved(id, cast.verseId)
-		end
-		local effect = effects[cast.verseId]
-		if effect ~= nil then
-			effect({
-				sim = sim,
-				caster = caster,
-				target = target,
-				verseId = cast.verseId,
-				step = step,
-			})
 		end
 	end
 
@@ -218,7 +360,9 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 				continue
 			end
 			local state = caster.action.state :: string
-			if state == "Hit" or state == "Staggered" or state == "Dead" then
+			-- Only an interruption state stops a cast; ordinary damage does
+			-- not.
+			if state == "Staggered" or state == "Dead" then
 				casts[id] = nil
 				sim:emit("verse_interrupted", id, { verseId = cast.verseId })
 			elseif step >= cast.resolveStep then

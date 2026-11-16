@@ -69,7 +69,15 @@ function VerseCast.new(deps: Deps): Dispatcher.Adapter
 				return Envelope.reject(ctx.requestId, ctx.action, "NOT_READY", "no combatant")
 			end
 			local id = combat:combatantId(ctx.userId)
-			local outcome = combat.verses:cast(id, payload.verseId, payload.target)
+			local aim = if payload.aimX ~= nil
+				then { x = payload.aimX, y = payload.aimY :: number, z = payload.aimZ :: number }
+				else nil
+			local outcome = combat.verses:cast(
+				id,
+				payload.verseId,
+				payload.target,
+				{ targetB = payload.targetB, aim = aim }
+			)
 			if not outcome.ok then
 				return Envelope.reject(
 					ctx.requestId,

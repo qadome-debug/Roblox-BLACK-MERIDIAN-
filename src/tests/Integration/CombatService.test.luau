@@ -182,16 +182,19 @@ suite:case("a Cant is equipped on the server and has no ability of its own", fun
 	end
 
 	-- The four Nearness Verses are registered with their confirmed
-	-- cooldowns, but cannot be cast until the rest of their values are
-	-- approved: nothing is spent and no cue is produced.
+	-- cooldowns and their initial balancing values. Without a world to
+	-- query, a Verse that moves things cannot do anything, so it gains
+	-- nothing: fail closed. (Real effects are tested in NearnessVerses.)
 	for _, verseId in { "near.close_step", "near.draw_near", "near.between_us", "near.no_farther" } do
 		Assert.isTrue(h.service.verseCatalog:isCompatible(verseId, "cant.nearness"), verseId)
-		local outcome: any = h.service.verses:cast(id, verseId, nil)
-		Assert.isFalse(outcome.ok, verseId .. " cannot be cast yet")
-		Assert.equal(outcome.reason, "verse not available", verseId .. " reason")
-		Assert.equal(h.service.verses:cooldownRemaining(id, verseId), 0, "no cooldown started")
+		Assert.isTrue(h.service.verseCatalog:isCastable(verseId), verseId .. " has its values")
 	end
-	Assert.equal(h.service.dissonance:value(id), 0, "no Dissonance from a refused cast")
+	Assert.isNil(h.service.verseEffects, "no world, no movement effects")
+	Assert.isTrue(h.service.verses:cast(id, "near.close_step", nil).ok, "the cast starts")
+	for _ = 1, 4 do
+		h.service:tick(1 / 30)
+	end
+	Assert.equal(h.service.dissonance:value(id), 0, "no effect, so no Dissonance")
 	h.service:removePlayer(1)
 	h.service:removePlayer(2)
 end)

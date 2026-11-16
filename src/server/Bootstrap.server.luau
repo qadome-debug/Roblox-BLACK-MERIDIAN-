@@ -31,6 +31,7 @@ local Telemetry = require(script.Parent.Logging.Telemetry)
 local UnavailableStore = require(script.Parent.Persistence.UnavailableStore)
 local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
 local VerseCast = require(script.Parent.Network.Adapters.VerseCast)
+local WorldQuery = require(script.Parent.Services.WorldQuery)
 
 -- Stage 1: configuration, clock, logging.
 local function detectEnvironment(): Config.Environment
@@ -220,6 +221,12 @@ local combat = CombatService.new({
 		if player ~= nil then
 			(remotes[remote] :: any):FireClient(player, payload)
 		end
+	end,
+	-- Collision queries and server moves for the Nearness Verses.
+	world = WorldQuery,
+	lineOfSight = WorldQuery.lineOfSight,
+	teleport = function(userId, to)
+		return characters:teleport(userId, to)
 	end,
 	poseOf = function(userId)
 		local snapshot = characters:sample(userId)

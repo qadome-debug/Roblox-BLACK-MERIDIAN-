@@ -30,6 +30,7 @@ local Targeting = require(script.Parent.Parent.Combat.Targeting)
 local Telemetry = require(script.Parent.Parent.Logging.Telemetry)
 local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
 local VerseCatalog = require(script.Parent.Parent.Content.VerseCatalog)
+local VerseEffects = require(script.Parent.Parent.Combat.VerseEffects)
 local Verses = require(script.Parent.Parent.Combat.Verses)
 
 export type Pose = { position: Vec3.Vec3, facing: Vec3.Vec3 }
@@ -48,6 +49,12 @@ export type Deps = {
 	-- none. Never derived from client input.
 	poseOf: ((userId: number) -> Pose?)?,
 	lineOfSight: ((from: Vec3.Vec3, to: Vec3.Vec3) -> boolean)?,
+	-- Collision queries for Verse movement. Without one, Verses that move
+	-- anything cannot resolve (fail closed).
+	world: VerseEffects.World?,
+	-- Moves a player's character to a position the server chose. Without
+	-- one only the simulation position changes (tests).
+	teleport: ((userId: number, to: Vec3.Vec3) -> boolean)?,
 	navigator: Ai.Navigator?,
 	stepSeconds: number?,
 	-- Seconds between replication pushes (default 1/20).
@@ -56,6 +63,7 @@ export type Deps = {
 	cantCatalog: CantCatalog.Catalog?,
 	-- Verse catalog (default VerseCatalog.production()) and server effects.
 	verseCatalog: VerseCatalog.Catalog?,
+	-- Extra or replacement Verse effects, by Verse ID or effect name.
 	verseEffects: { [string]: Verses.Effect }?,
 	-- Dissonance tuning and actions (defaults: nothing approved yet, so no
 	-- passive recovery and no actions). A resolved Verse adds the amount
@@ -82,6 +90,9 @@ export type EnemySpec = {
 	position: Vec3.Vec3,
 	facing: Vec3.Vec3?,
 	profile: Ai.Profile?,
+	-- "elite" is moved by a reduced amount; "immune" (bosses) is never
+	-- pulled or tethered.
+	displacement: ("normal" | "elite" | "immune")?,
 }
 
 export type Service = {
@@ -107,6 +118,7 @@ export type Service = {
 	cants: Cants.Layer,
 	verses: Verses.Layer,
 	dissonance: Dissonance.Layer,
+	verseEffects: VerseEffects.Layer?,
 	verseCatalog: VerseCatalog.Catalog,
 }
 
@@ -153,10 +165,38 @@ function CombatService.new(deps: Deps): Service
 		inStableEnvironment = deps.inStableEnvironment,
 		onRupture = deps.onRupture,
 	})
+	local playerIds: { [string]: number } = {}
+	local verseEffects: VerseEffects.Layer? = nil
+	local effects: { [string]: Verses.Effect } = {}
+	if deps.world ~= nil then
+		local movement = VerseEffects.attach(sim, {
+			world = deps.world,
+			move = function(id: string, to: Vec3.Vec3)
+				local combatant = sim:get(id)
+				if combatant == nil then
+					return
+				end
+				local userId = playerIds[id]
+				if userId ~= nil and deps.teleport ~= nil then
+					deps.teleport(userId, to)
+				end
+				combatant.position = Vec3.copy(to)
+			end,
+		})
+		verseEffects = movement
+		for name, effect in movement.effects do
+			effects[name] = effect
+		end
+	end
+	local extraEffects: { [string]: Verses.Effect } = deps.verseEffects or {}
+	for name, effect in extraEffects do
+		effects[name] = effect
+	end
 	local verses = Verses.attach(sim, {
 		catalog = verseCatalog,
 		cants = cants,
-		effects = deps.verseEffects,
+		lineOfSight = deps.lineOfSight,
+		effects = effects,
 		onResolved = function(casterId: string, verseId: string)
 			local def = verseCatalog:get(verseId)
 			if def ~= nil and def.dissonance ~= nil and def.dissonance > 0 then
@@ -165,8 +205,11 @@ function CombatService.new(deps: Deps): Service
 		end,
 	})
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL
-	sim:onStep(function()
+	sim:onStep(function(step: number)
 		ai:tick()
+		if verseEffects ~= nil then
+			verseEffects:tick(step)
+		end
 		targeting:tick()
 		replication:collect()
 	end)
@@ -183,6 +226,7 @@ function CombatService.new(deps: Deps): Service
 	service.verses = verses
 	service.dissonance = dissonance
 	service.verseCatalog = verseCatalog
+	service.verseEffects = verseEffects
 
 	local function log(
 		level: Logger.Level,
@@ -219,6 +263,7 @@ function CombatService.new(deps: Deps): Service
 			facing = if pose ~= nil then pose.facing else nil,
 		})
 		players[userId] = true
+		playerIds[playerId(userId)] = userId
 		lastRevisionSent[userId] = nil
 		log("debug", "combat_player_added", userId)
 	end
@@ -232,6 +277,10 @@ function CombatService.new(deps: Deps): Service
 		cants:forget(playerId(userId))
 		verses:forget(playerId(userId))
 		dissonance:forget(playerId(userId))
+		if verseEffects ~= nil then
+			verseEffects:forget(playerId(userId))
+		end
+		playerIds[playerId(userId)] = nil
 		sim:removeCombatant(playerId(userId))
 		replication:forgetViewer(playerId(userId))
 		log("debug", "combat_player_removed", userId)
@@ -271,11 +320,18 @@ function CombatService.new(deps: Deps): Service
 			position = spec.position,
 			facing = spec.facing,
 		})
+		local spawned = sim:get(spec.id)
+		if spawned ~= nil and spec.displacement ~= nil then
+			spawned.extra.displacement = spec.displacement
+		end
 		ai:adopt(spec.id, spec.profile)
 	end
 
 	function service:despawnEnemy(id: string): boolean
 		ai:forget(id)
+		if verseEffects ~= nil then
+			verseEffects:forget(id)
+		end
 		return sim:removeCombatant(id)
 	end
 

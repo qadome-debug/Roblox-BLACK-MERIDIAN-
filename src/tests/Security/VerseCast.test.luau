@@ -258,15 +258,15 @@ suite:case("an unaffordable cast spends nothing and starts no cooldown", functio
 	Assert.equal(h.combat.verses:cooldownRemaining(h.me, "ta.v1"), 0, "no cooldown")
 end)
 
-suite:case("being hit interrupts a cast: no effect, costs and cooldown stay", function(env)
+suite:case("a stagger interrupts a cast: no effect, costs and cooldown stay", function(env)
 	local h = harness(env)
 	local me = h.combat.sim:get(h.me) :: any
 	local stamina = me.resources.stamina
 	Assert.equal(h.send({ verseId = "ta.v1" }).status, "OK", "cast")
 	steps(h, 2)
-	-- A hit interrupts through the damage layer's hit stun.
+	-- A stagger (for example a guard break) is an interruption state.
 	local ActionMachine = require(ServerScriptService.Server.Combat.ActionMachine)
-	ActionMachine.interrupt(me.action, "Hit", 6, h.combat.sim:stepNumber())
+	ActionMachine.interrupt(me.action, "Staggered", 6, h.combat.sim:stepNumber())
 	steps(h, 10)
 	Assert.equal(#h.effects, 0, "fizzled")
 	Assert.equal(me.resources.stamina < stamina, true, "cost stays spent")
@@ -280,6 +280,20 @@ suite:case("being hit interrupts a cast: no effect, costs and cooldown stay", fu
 		end
 	end
 	Assert.isTrue(interrupted, "interruption announced")
+end)
+
+suite:case("ordinary damage does not interrupt a cast", function(env)
+	local h = harness(env)
+	local me = h.combat.sim:get(h.me) :: any
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "OK", "cast")
+	steps(h, 1)
+	-- A plain hit puts the combatant in hit stun, which is not an
+	-- interruption state for a cast.
+	local ActionMachine = require(ServerScriptService.Server.Combat.ActionMachine)
+	ActionMachine.interrupt(me.action, "Hit", 3, h.combat.sim:stepNumber())
+	steps(h, 12)
+	Assert.equal(#h.effects, 1, "the Verse still resolved")
+	Assert.isNil(h.combat.verses:casting(h.me), "no cast pending")
 end)
 
 return suite:cases()

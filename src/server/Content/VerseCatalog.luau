@@ -38,6 +38,8 @@ export type Prerequisites = {
 
 export type Mechanics = "canonical" | "provisional"
 
+export type Targeting = "none" | "direction" | "point" | "combatant" | "pair"
+
 export type Definition = {
 	id: string,
 	cantId: string,
@@ -50,6 +52,12 @@ export type Definition = {
 	castSeconds: number?,
 	-- Dissonance the caster gains when the Verse resolves.
 	dissonance: number?,
+	-- How the Verse is aimed, which combat states it may start from, and
+	-- the server effect (a name, never a function) with its parameters.
+	targeting: Targeting?,
+	castFrom: { string }?,
+	effect: string?,
+	params: { [string]: number }?,
 	prerequisites: Prerequisites,
 	mechanics: Mechanics,
 }
@@ -72,6 +80,8 @@ export type Catalog = {
 	prerequisitesMet: (self: Catalog, verseId: string, facts: Facts) -> boolean,
 }
 
+local NearnessTuning = require(script.Parent.NearnessTuning)
+
 local VerseCatalog = {}
 
 VerseCatalog.MAX_COST = 1000
@@ -87,10 +97,24 @@ local FIELDS: { [string]: boolean } = {
 	castSeconds = true,
 	cooldownSeconds = true,
 	dissonance = true,
+	targeting = true,
+	castFrom = true,
+	effect = true,
+	params = true,
 	prerequisites = true,
 	mechanics = true,
 }
 local PREREQ_FIELDS: { [string]: boolean } = { verseIds = true, waymarkId = true, questId = true }
+local TARGETING: { [string]: boolean } =
+	{ none = true, direction = true, point = true, combatant = true, pair = true }
+local CAST_STATES: { [string]: boolean } = {
+	Idle = true,
+	Guarding = true,
+	Attacking = true,
+	Dodging = true,
+	Parrying = true,
+	AttackRecovery = true,
+}
 local POOLS: { [string]: boolean } = { stamina = true, posture = true, health = true }
 
 local function isArray(value: unknown): boolean
@@ -210,6 +234,49 @@ function VerseCatalog.validate(definitions: unknown, canon: ContentRegistry.Regi
 			)
 		then
 			problem(id .. ": dissonance must be within 0.." .. VerseCatalog.MAX_DISSONANCE)
+		end
+		if def.targeting ~= nil and not TARGETING[def.targeting] then
+			problem(id .. ": unknown targeting " .. tostring(def.targeting))
+		end
+		if def.castFrom ~= nil then
+			if not isArray(def.castFrom) or #def.castFrom == 0 then
+				problem(id .. ": castFrom must be a non-empty list")
+			else
+				for _, state in def.castFrom :: { any } do
+					if not CAST_STATES[state] then
+						problem(id .. ": castFrom lists unknown state " .. tostring(state))
+					end
+				end
+			end
+		end
+		if def.effect ~= nil then
+			if
+				type(def.effect) ~= "string"
+				or #def.effect > 48
+				or string.match(def.effect, "^[a-z][a-z0-9_]*$") == nil
+			then
+				problem(id .. ": effect must be a lower-case effect name")
+			end
+		end
+		if def.params ~= nil then
+			if type(def.params) ~= "table" then
+				problem(id .. ": params must be a table of numbers")
+			else
+				local n = 0
+				for key, value in def.params :: { [any]: any } do
+					n += 1
+					if type(key) ~= "string" or not isFinite(value) or math.abs(value) > 1e6 then
+						problem(id .. ": params must map names to bounded finite numbers")
+						break
+					end
+				end
+				if n > 16 then
+					problem(id .. ": at most 16 params")
+				end
+				if def.effect == nil and n > 0 then
+					problem(id .. ": params without an effect")
+				end
+			end
 		end
 		-- A canonical Verse is complete: no value it needs is left unset.
 		if
@@ -397,56 +464,38 @@ function VerseCatalog.toSteps(seconds: number, stepSeconds: number): number
 	return math.max(0, math.floor(seconds / stepSeconds + 0.5))
 end
 
--- The production definitions: the four Nearness Verses.
---
--- Cooldowns are confirmed by the design (approved 2026-11-16). Costs, cast
--- times, ranges, durations, strength and Dissonance gain are NOT yet
--- approved, so they are left unset and the Verses cannot be cast. They are
--- registered so that IDs, ownership, compatibility and cooldown data are
--- real; the proposed starting values are in docs/decision-sheet.md and are
--- not used by any code.
---
--- What each Verse does, from the design:
---   Close Step   shortens the path to a valid point and lunges toward it
---   Draw Near    pulls an eligible enemy or object toward an anchor
---   Between Us   creates a temporary adjacency tether between two targets
---   No Farther   creates a temporary zone that compresses escape distance
-local PRODUCTION: { Definition } = {
-	{
-		id = "near.close_step",
-		cantId = "cant.nearness",
-		cooldownSeconds = 7,
-		prerequisites = { verseIds = {} },
-		mechanics = "provisional",
-	},
-	{
-		id = "near.draw_near",
-		cantId = "cant.nearness",
-		cooldownSeconds = 11,
-		prerequisites = { verseIds = {} },
-		mechanics = "provisional",
-	},
-	{
-		id = "near.between_us",
-		cantId = "cant.nearness",
-		cooldownSeconds = 16,
-		prerequisites = { verseIds = {} },
-		mechanics = "provisional",
-	},
-	{
-		id = "near.no_farther",
-		cantId = "cant.nearness",
-		cooldownSeconds = 24,
-		prerequisites = { verseIds = {} },
-		mechanics = "provisional",
-	},
-}
+-- The production definitions: the four Nearness Verses, built from
+-- Content/NearnessTuning. Cooldowns are confirmed by the design; every
+-- other value is an initial balancing value approved on 2026-11-16, kept
+-- in one table so it can be adjusted after play. The Verses are therefore
+-- "provisional": playable, not final.
+function VerseCatalog.definitionsFrom(tuning: { NearnessTuning.Verse }): { Definition }
+	local out: { Definition } = {}
+	for _, verse in tuning do
+		local definition: Definition = {
+			id = verse.id,
+			cantId = "cant.nearness",
+			cooldownSeconds = verse.cooldownSeconds,
+			castSeconds = verse.castSeconds,
+			costs = { { pool = "stamina", amount = verse.stamina } :: Cost },
+			dissonance = verse.dissonance,
+			targeting = verse.targeting :: any,
+			castFrom = table.clone(verse.castFrom),
+			effect = verse.effect,
+			params = table.clone(verse.params),
+			prerequisites = { verseIds = {} },
+			mechanics = "provisional",
+		}
+		table.insert(out, definition)
+	end
+	return out
+end
 
 local production: Catalog? = nil
 
 function VerseCatalog.production(): Catalog
 	if production == nil then
-		production = VerseCatalog.build(PRODUCTION)
+		production = VerseCatalog.build(VerseCatalog.definitionsFrom(NearnessTuning))
 	end
 	return production :: Catalog
 end

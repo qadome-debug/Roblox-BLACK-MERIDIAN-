@@ -77,6 +77,11 @@ export type CantEquipResultData = {
 export type VerseCastPayload = {
 	verseId: string, -- canonical verse id
 	target: string?, -- combatant id, opaque, <= 64 bytes
+	targetB: string?, -- second target (Between Us), opaque, <= 64 bytes
+	-- Aim point in world space. A hint: the server chooses every position.
+	aimX: number?,
+	aimY: number?,
+	aimZ: number?,
 }
 
 export type VerseCastResultData = {
