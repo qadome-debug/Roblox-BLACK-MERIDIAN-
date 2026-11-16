@@ -1,8 +1,10 @@
 # Continuous integration (BM-010).
 #
 # Runs the same checks as `lune run tools/check-all.luau`, with the toolchain
-# pinned by rokit.toml. This workflow uses no secrets and no credentials of
-# any kind; nothing it does can reach a Roblox DataStore or publish a place.
+# pinned by rokit.toml. The only credential it touches is the run's own
+# read-only GITHUB_TOKEN, used solely so Rokit's release lookups are not
+# throttled by the anonymous API rate limit on shared runners. Nothing it
+# does can reach a Roblox DataStore or publish a place.
 # Branch protection on `main` must require the `checks` job (see docs/ci.md).
 
 name: ci
@@ -44,8 +46,26 @@ jobs:
           ./rokit-bin/rokit self-install
           echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
 
-      - name: Install pinned tools
-        run: rokit install --no-trust-check
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.rokit/tool-storage
+          key: rokit-tools-${{ runner.os }}-${{ hashFiles('rokit.toml') }}
+
+      - name: Install pinned tools (authenticated, with retries)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rokit authenticate github --token "$GITHUB_TOKEN" --skip-verify
+          for attempt in 1 2 3 4; do
+            if rokit install --no-trust-check; then
+              exit 0
+            fi
+            echo "rokit install failed (attempt $attempt); retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Print tool versions
         run: |
