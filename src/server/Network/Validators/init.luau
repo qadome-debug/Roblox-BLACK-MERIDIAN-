@@ -18,6 +18,7 @@ local REGISTRY: { [Actions.ActionName]: Validator } = {
 	CombatInput = require(script.CombatInput) :: Validator,
 	QuestChoice = require(script.QuestChoice) :: Validator,
 	TravelReady = require(script.TravelReady) :: Validator,
+	VerseCast = require(script.VerseCast) :: Validator,
 }
 
 local Validators = {}

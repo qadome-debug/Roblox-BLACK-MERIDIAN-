@@ -72,6 +72,19 @@ export type CantEquipResultData = {
 	changed: boolean,
 }
 
+-- Verse casting. Owning task BM-067. The target is a hint the server
+-- verifies (existence, liveness, range), never a claim.
+export type VerseCastPayload = {
+	verseId: string, -- canonical verse id
+	target: string?, -- combatant id, opaque, <= 64 bytes
+}
+
+export type VerseCastResultData = {
+	verseId: string,
+	target: string?,
+	resolveStep: number,
+}
+
 -- Session bootstrap. Owning task BM-017.
 export type ClientHelloPayload = {
 	protocolVersion: number,

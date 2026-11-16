@@ -28,6 +28,8 @@ local Simulation = require(script.Parent.Parent.Combat.Simulation)
 local Targeting = require(script.Parent.Parent.Combat.Targeting)
 local Telemetry = require(script.Parent.Parent.Logging.Telemetry)
 local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
+local VerseCatalog = require(script.Parent.Parent.Content.VerseCatalog)
+local Verses = require(script.Parent.Parent.Combat.Verses)
 
 export type Pose = { position: Vec3.Vec3, facing: Vec3.Vec3 }
 
@@ -52,6 +54,11 @@ export type Deps = {
 	-- Cant kits by Cant ID (default Cants.PRODUCTION_KITS). Every kit must
 	-- name a Cant in the production catalog.
 	cantKits: { [string]: Cants.Kit }?,
+	-- Cant catalog (default CantCatalog.production()).
+	cantCatalog: CantCatalog.Catalog?,
+	-- Verse catalog (default VerseCatalog.production()) and server effects.
+	verseCatalog: VerseCatalog.Catalog?,
+	verseEffects: { [string]: Verses.Effect }?,
 }
 
 export type PlayerSpec = {
@@ -91,6 +98,8 @@ export type Service = {
 	targeting: Targeting.Targeting,
 	ai: Ai.Ai,
 	cants: Cants.Layer,
+	verses: Verses.Layer,
+	verseCatalog: VerseCatalog.Catalog,
 }
 
 local CombatService = {}
@@ -123,13 +132,16 @@ function CombatService.new(deps: Deps): Service
 	local targeting = Targeting.attach(sim, { lineOfSight = deps.lineOfSight, damage = damage })
 	local ai = Ai.attach(sim, { logger = deps.logger, navigator = deps.navigator, damage = damage })
 	local replication = Replication.new(sim, { targeting = targeting })
-	local catalog = CantCatalog.production()
+	local catalog = deps.cantCatalog or CantCatalog.production()
 	local cants = Cants.attach(sim, {
 		kits = deps.cantKits or Cants.PRODUCTION_KITS,
 		resolve = function(value)
 			return catalog:resolve(value)
 		end,
 	})
+	local verseCatalog = deps.verseCatalog or VerseCatalog.production()
+	local verses =
+		Verses.attach(sim, { catalog = verseCatalog, cants = cants, effects = deps.verseEffects })
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL
 	sim:onStep(function()
 		ai:tick()
@@ -146,6 +158,8 @@ function CombatService.new(deps: Deps): Service
 	service.targeting = targeting
 	service.ai = ai
 	service.cants = cants
+	service.verses = verses
+	service.verseCatalog = verseCatalog
 
 	local function log(
 		level: Logger.Level,
@@ -193,6 +207,7 @@ function CombatService.new(deps: Deps): Service
 		players[userId] = nil
 		lastRevisionSent[userId] = nil
 		cants:forget(playerId(userId))
+		verses:forget(playerId(userId))
 		sim:removeCombatant(playerId(userId))
 		replication:forgetViewer(playerId(userId))
 		log("debug", "combat_player_removed", userId)

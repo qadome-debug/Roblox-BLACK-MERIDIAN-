@@ -69,6 +69,10 @@ local PUBLIC_CUES: { [string]: { string } } = {
 	target_acquired = { "target" },
 	target_lost = { "reason" },
 	cant_activated = { "cantId" },
+	verse_cast_started = { "verseId", "target" },
+	verse_resolved = { "verseId", "target" },
+	verse_interrupted = { "verseId" },
+	verse_fizzled = { "verseId", "reason" },
 }
 
 -- Event kinds only the combatant itself may see.

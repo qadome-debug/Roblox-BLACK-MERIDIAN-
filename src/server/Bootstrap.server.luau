@@ -27,6 +27,7 @@ local Session = require(script.Parent.Network.Session)
 local Telemetry = require(script.Parent.Logging.Telemetry)
 local UnavailableStore = require(script.Parent.Persistence.UnavailableStore)
 local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
+local VerseCast = require(script.Parent.Network.Adapters.VerseCast)
 
 -- Stage 1: configuration, clock, logging.
 local function detectEnvironment(): Config.Environment
@@ -212,6 +213,7 @@ local dispatcher = Dispatcher.new({
 dispatcher:register(ClientHello.new({ sessions = sessions, clock = clock }))
 dispatcher:register(CombatInput.new({ combat = combat }))
 dispatcher:register(CantEquip.new({ profiles = profiles, combat = combat }))
+dispatcher:register(VerseCast.new({ profiles = profiles, combat = combat }))
 dispatcher:attach(remotes[Protocol.REMOTES.ACTION_REQUEST], remotes[Protocol.REMOTES.ACTION_RESULT])
 
 -- Stage 5: player sessions and profiles.
