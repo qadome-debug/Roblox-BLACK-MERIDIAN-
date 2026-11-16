@@ -8,6 +8,15 @@
 -- sequence of steps. Clients never send meter values: the only client path
 -- is `perform`, which names an action and is judged here.
 --
+-- PLACEHOLDER BEHAVIOUR (not canon; replace when the design is supplied):
+--   * what raises Dissonance (today: the caller decides; CombatService adds
+--     a fixed amount when a Verse resolves),
+--   * that the meter decays over time, and the thresholds and rates,
+--   * that the meter lives only for the combat session. The profile has a
+--     saved `burdens.dissonance` field and docs/architecture.md puts the
+--     meter under BurdenService; this layer does not read or write it yet.
+-- A passing test of this layer proves the mechanism, not the game rule.
+--
 -- Dissonance actions are data: minimum level, the Dissonance they consume
 -- (or add), a step cooldown, and a server effect. The canonical actions,
 -- thresholds and rates are not yet in the design inventory, so the

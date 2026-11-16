@@ -13,6 +13,10 @@
 --     quests, with no prerequisite cycles;
 --   * costs and timings are finite, positive where required, and bounded.
 --
+-- SCHEMA ASSUMPTIONS (not canon): cost pools, cast and cooldown timing and
+-- the prerequisite kinds are this catalog's working shape until the design
+-- states what a Verse costs and how it is unlocked.
+--
 -- `resolve` is the entry point for client input. Production definitions
 -- are added by BM-066 as canonical Verse names arrive; until then the
 -- production catalog is empty and valid.

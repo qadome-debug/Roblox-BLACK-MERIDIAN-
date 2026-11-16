@@ -4,12 +4,26 @@ One entry per backlog task from `docs/technical-plan-2.0.md`. A task is
 listed as done only when its tests and acceptance conditions passed, not
 when its code compiled.
 
+Statuses:
+
+- **Done** — built, tested, and the task's "Done" condition in the plan is met.
+- **Framework** — the system is built and tested with fixtures or
+  placeholders, but the task is **not accepted**: its "Done" condition needs
+  canonical content or mechanics that are not in the repository, or it
+  depends on a task that is not accepted. Placeholder numbers and assumed
+  shapes are temporary and are marked in the code.
+- **Blocked** — cannot start without input.
+
+Status review 2026-11-16: BM-004, BM-035, BM-062 to BM-065 and BM-067 to
+BM-069 were moved from Done/Partial to Framework after the play-test in
+`docs/reviews/2026-11-16-playtest.md`.
+
 | Task   | Status | Date       | Evidence                                                                 |
 | ------ | ------ | ---------- | ------------------------------------------------------------------------ |
 | BM-001 | Done   | 2026-11-12 | `rojo build` clean; both bootstraps printed in a Studio playtest         |
 | BM-002 | Done   | 2026-11-12 | Clean Rokit install on Windows; format, lint, type check, build all pass |
 | BM-003 | Done   | 2026-11-12 | `docs/architecture.md`; `tools/check-deps.luau` self-test passes on clean, cycle, layer and unresolved fixtures; repo check passes |
-| BM-004 | Done   | 2026-11-12 | `ContentRegistry` validates and freezes `Content.luau`; 25 tests cover duplicate, invalid, missing-reference, wrong-category, type and consistency fixtures. Only Nearness and Waymark I are registered pending the inventory |
+| BM-004 | Framework | 2026-11-12 | NOT ACCEPTED: the registry holds 2 canonical IDs (Nearness, Waymark I); the rest of the inventory is missing. `ContentRegistry` validates and freezes `Content.luau`; 25 tests cover duplicate, invalid, missing-reference, wrong-category, type and consistency fixtures. Only Nearness and Waymark I are registered pending the inventory |
 | BM-005 | Done   | 2026-11-12 | `Contracts/{Actions,Protocol,Payloads}`, `Types/Profile`, `Constants/Limits` type-check in strict mode; `tools/check-contracts.luau` finds no `any`; 6 contract tests pass |
 | BM-006 | Done   | 2026-11-12 | `server/Config` builds frozen config per environment; 9 tests cover invalid config, production override refusal, and every experimental flag defaulting off in every environment |
 | BM-007 | Done   | 2026-11-12 | `shared/Sim/{Clock,Rng,FixedStep}`; 13 tests including a seeded simulation replayed to an identical trace and a pinned known sequence |
@@ -42,7 +56,7 @@ when its code compiled.
 | BM-032 | Done   | 2026-11-14 | Loader quarantines invalid, corrupt and newer-schema records read-only and untouched; `Persistence/Repair.attempt` fills missing containers and resets a bad lease with an audit report, never touching progression or unknown IDs (5 tests) |
 | BM-033 | Done   | 2026-11-14 | `Persistence/Inventory` pure add/remove for stackables and instances with merge, stack cap, 200-stack capacity, unique instance IDs; invariants verified after an encode round trip (6 tests) |
 | BM-034 | Done   | 2026-11-14 | `Persistence/Balances` integer add/spend with per-currency caps, single-grant ceiling, no negatives, bounded currency count, `canAfford` (5 tests) |
-| BM-035 | Done   | 2026-11-14 | `Content/RewardCatalog` validates definitions (ids, kinds, sources, grant bounds, canonical unlocks) and derives deterministic permanent/seasonal receipt IDs (3 tests); production catalog empty pending the inventory |
+| BM-035 | Framework | 2026-11-14 | NOT ACCEPTED: the production reward catalog is empty pending the inventory. `Content/RewardCatalog` validates definitions (ids, kinds, sources, grant bounds, canonical unlocks) and derives deterministic permanent/seasonal receipt IDs (3 tests); production catalog empty pending the inventory |
 | BM-036 | Done   | 2026-11-14 | `Receipts.permanentGrant` writes receipt and grant in one transform; duplicates within and across sessions are no-ops; capacity fails closed with nothing pruned |
 | BM-037 | Done   | 2026-11-14 | `Receipts.seasonalGrant` with a retention policy: duplicate, closed-season and future-season grants refused; ledger prunes only closed seasons under pressure, then fails closed |
 | BM-038 | Done   | 2026-11-14 | `Receipts.recordIntent` durable pending intents (max 32, fail closed); an intent survives a simulated crash and is fulfilled by the next owner, which clears it in the same write |
@@ -69,30 +83,72 @@ when its code compiled.
 | BM-059 | Done   | 2026-11-15 | `Combat/Targeting`: server-granted lock-on (exists, alive, hostile, in range, in sight), nearest-first `cycle`, per-step re-validation with grace period, drops on death/removal/clear, engagement from server-resolved damage with timeout, `engage` for other systems; hits never consult the lock (6 tests) |
 | BM-060 | Done   | 2026-11-15 | `Contracts/CombatReplication` (public view: state/phase/actionId/health fraction; own view adds exact resources, lock, engagement, `ackSequence`), `Combat/Replication` (change tracking, incremental deltas, full resync after the history window or a future revision, bounded public cues, private rejections only to the owner), `Services/CombatService` (owns the stack, player↔combatant mapping, server-sampled poses, per-step hooks, replication through injected remotes), client `CombatState` (applies deltas/cues, prediction reconciled by the ack) (4 + 3 tests) |
 | BM-061 | Done   | 2026-11-15 | `CombatInput` contract (kinds Attack/Dodge/Guard/Parry/Release/Lock/Unlock/CycleTarget, bounded sequence, optional opaque target), strict validator, adapter forwarding to CombatService (NOT_READY without a combatant, REJECTED with the simulation's fixed reason); Bootstrap stage 3 wires CharacterService (Roblox rig adapter) and CombatService (remote sender, server-sampled poses, heartbeat tick, join/leave); security tests: malformed payloads, stale sequences, spam vs the combat rate class, forged targets, no combatant (6 tests) |
-| BM-062 | Done   | 2026-11-15 | Server `CantCatalog`: typed definitions (unlock rule starter/waymark/quest, legal slots primary/secondary, symmetric exclusions, compatible Verse IDs, mechanics canonical/provisional), validated against the canonical registry (no fabricated or missing Cants, Verse lists must match, unlock refs canonical, starter flag consistent); `resolve`, `isUnlocked` from server facts, `canSlot`, `isVerseCompatible`, `checkLoadout`; production catalog defines Nearness only, mechanics provisional pending the design inventory (10 tests) |
-| BM-063 | Partial | 2026-11-15 | Server Cant activation layer in the combat simulation: equip (server-owned, catalog-checked, not mid-action), activate gated by equipped Cant, alive, allowed combat state, step-counted cooldown that survives swapping, atomic resource cost; validated kits; `cant_activated` public cue; wired into CombatService (`service.cants`, forgotten on leave). Nearness kit is provisional: placeholder numbers and an effect that only announces activation, because its canonical mechanics are not in the repository (8 tests). Blocked: Nearness mechanics |
-| BM-064 | Done   | 2026-11-15 | `CantEquip` contract and strict validator (slot enum, optional registry Cant ID); adapter checks catalog, ownership from `cants.unlocked` (UNAUTHORIZED, security log), slot legality, duplicate/empty equips, busy combatant, then mirrors into the combat Cant layer and saves `cants.equipped` through new `ProfileService:profileFor/mutate` (schema-checked, queued, rolled back on refusal); only the primary slot is backed until a profile migration adds a second; registered in Bootstrap (7 security tests + 1 ProfileService test) |
-| BM-065 | Done   | 2026-11-15 | Server `VerseCatalog`: typed definitions (Cant, up to three distinct pool costs bounded to (0, 1000], integer cast/cooldown steps with caps, prerequisites of same-Cant Verses plus optional Waymark/quest, mechanics flag) validated against the registry (no fabricated or missing Verses, registry Cant must match, canonical prerequisite refs, no self-requirement or cycles); `resolve`, `forCant`, `isCompatible`, `prerequisitesMet` from server facts; production list empty until canonical Verse names arrive (6 tests) |
+| BM-062 | Framework | 2026-11-15 | NOT ACCEPTED: only Nearness is defined; slot count and unlock kinds are assumptions, not canon. Server `CantCatalog`: typed definitions (unlock rule starter/waymark/quest, legal slots primary/secondary, symmetric exclusions, compatible Verse IDs, mechanics canonical/provisional), validated against the canonical registry (no fabricated or missing Cants, Verse lists must match, unlock refs canonical, starter flag consistent); `resolve`, `isUnlocked` from server facts, `canSlot`, `isVerseCompatible`, `checkLoadout`; production catalog defines Nearness only, mechanics provisional pending the design inventory (10 tests) |
+| BM-063 | Framework | 2026-11-15 | NOT ACCEPTED: PLACEHOLDER kit (invented cooldown and cost, effect only announces activation); no client request activates a Cant. Server Cant activation layer in the combat simulation: equip (server-owned, catalog-checked, not mid-action), activate gated by equipped Cant, alive, allowed combat state, step-counted cooldown that survives swapping, atomic resource cost; validated kits; `cant_activated` public cue; wired into CombatService (`service.cants`, forgotten on leave). Nearness kit is provisional: placeholder numbers and an effect that only announces activation, because its canonical mechanics are not in the repository (8 tests). Blocked: Nearness mechanics |
+| BM-064 | Framework | 2026-11-15 | NOT ACCEPTED: depends on BM-063; only the primary slot is saved; no flow lets a player own a Cant yet (starter selection is BM-106). Verified technically in Studio 2026-11-16. `CantEquip` contract and strict validator (slot enum, optional registry Cant ID); adapter checks catalog, ownership from `cants.unlocked` (UNAUTHORIZED, security log), slot legality, duplicate/empty equips, busy combatant, then mirrors into the combat Cant layer and saves `cants.equipped` through new `ProfileService:profileFor/mutate` (schema-checked, queued, rolled back on refusal); only the primary slot is backed until a profile migration adds a second; registered in Bootstrap (7 security tests + 1 ProfileService test) |
+| BM-065 | Framework | 2026-11-15 | NOT ACCEPTED: no canonical Verse is defined; cost, timing and prerequisite shapes are assumptions. Server `VerseCatalog`: typed definitions (Cant, up to three distinct pool costs bounded to (0, 1000], integer cast/cooldown steps with caps, prerequisites of same-Cant Verses plus optional Waymark/quest, mechanics flag) validated against the registry (no fabricated or missing Verses, registry Cant must match, canonical prerequisite refs, no self-requirement or cycles); `resolve`, `forCant`, `isCompatible`, `prerequisitesMet` from server facts; production list empty until canonical Verse names arrive (6 tests) |
 | BM-066 | Blocked | 2026-11-15 | Needs the canonical Nearness Verse names and mechanics; the Verse catalog, cast pipeline and adapter are ready to take them |
-| BM-067 | Done   | 2026-11-15 | Server Verse cast pipeline in the combat simulation (alive, not mid-action, one cast at a time, catalog-defined, compatible with the equipped Cant, per-Verse step cooldown, all-or-nothing costs, target hint verified for existence/self/liveness/range; cast time, interruption by Hit/Staggered/Dead with costs and cooldown kept, fizzle on lost target, server-only effects; public cues); `VerseCast` contract, validator and adapter (catalog check, profile unlock check as UNAUTHORIZED, combatant); CombatService takes injected Cant/Verse catalogs, kits and effects; shared test content fixtures (7 security tests) |
-| BM-068 | Partial | 2026-11-15 | Server Dissonance layer: per-combatant meter raised only by the server (resolved Verses via a pipeline hook), clamped, numbered levels at ascending thresholds with one event per change, decay after a quiet period, validated tuning; data-driven actions (min level, consume/add, step cooldown, server effect); `DissonanceAction` contract/validator (action name only, no meter values) and adapter; public cues; deterministic-replay test (6 tests). Tuning is provisional and the production action list is empty: canonical thresholds, rates and actions are not in the repository. Own-view meter replication is still to add |
-| BM-069 | Done   | 2026-11-15 | Server `BurdenCatalog`: typed definitions (acquisition sources descent/boss/quest/waymark, symmetric canonical incompatibilities, maxStacks 1..5, up to four derived-stat modifiers with add within half the stat cap and mul in 0.5..1.5, mechanics flag) validated against the registry; `resolve`, `compatible(held, candidate)`, `modifiersFor(stacks)` clamped to maxStacks and attribute limits; production list empty until canonical Burdens arrive; Burdens added to the shared test fixtures (5 tests) |
+| BM-067 | Framework | 2026-11-15 | NOT ACCEPTED: depends on BM-066 (blocked); with real content only refusals run, the successful cast is tested with fixture Verses only. Server Verse cast pipeline in the combat simulation (alive, not mid-action, one cast at a time, catalog-defined, compatible with the equipped Cant, per-Verse step cooldown, all-or-nothing costs, target hint verified for existence/self/liveness/range; cast time, interruption by Hit/Staggered/Dead with costs and cooldown kept, fizzle on lost target, server-only effects; public cues); `VerseCast` contract, validator and adapter (catalog check, profile unlock check as UNAUTHORIZED, combatant); CombatService takes injected Cant/Verse catalogs, kits and effects; shared test content fixtures (7 security tests) |
+| BM-068 | Framework | 2026-11-15 | NOT ACCEPTED: PLACEHOLDER thresholds, rise-on-Verse and decay are assumptions; no canonical action; the saved `burdens.dissonance` field is not used. Server Dissonance layer: per-combatant meter raised only by the server (resolved Verses via a pipeline hook), clamped, numbered levels at ascending thresholds with one event per change, decay after a quiet period, validated tuning; data-driven actions (min level, consume/add, step cooldown, server effect); `DissonanceAction` contract/validator (action name only, no meter values) and adapter; public cues; deterministic-replay test (6 tests). Tuning is provisional and the production action list is empty: canonical thresholds, rates and actions are not in the repository. Own-view meter replication is still to add |
+| BM-069 | Framework | 2026-11-15 | NOT ACCEPTED: no canonical Burden is defined; sources, stacking and modifier-only consequences are assumptions. Server `BurdenCatalog`: typed definitions (acquisition sources descent/boss/quest/waymark, symmetric canonical incompatibilities, maxStacks 1..5, up to four derived-stat modifiers with add within half the stat cap and mul in 0.5..1.5, mechanics flag) validated against the registry; `resolve`, `compatible(held, candidate)`, `modifiersFor(stacks)` clamped to maxStacks and attribute limits; production list empty until canonical Burdens arrive; Burdens added to the shared test fixtures (5 tests) |
+
+## Play-test 2026-11-16
+
+Full record: `docs/reviews/2026-11-16-playtest.md`.
+
+- Roblox Studio, play-test build with in-memory stores: 52 of 52 scripted
+  checks passed, twice. No script errors and no ERROR-level game events.
+- Roblox Studio, no DataStore (unpublished place): 10 of 10 checks passed;
+  the server stays up and every gameplay request is `NOT_READY`.
+- Bug fixed: the saved equipped Cant was not restored into combat after a
+  rejoin (`Services/Loadout`, 3 reconnect tests).
+- Not tested in Studio: a real leave-and-rejoin, real DataStores, a
+  successful Verse cast or interruption (no canonical Verse), anything
+  visual (the screen was locked; results were read from the Studio log),
+  more than one client.
 
 ## Blockers
 
 - **Branch protection (BM-010).** Needs the repository owner to require the
-  `checks` status on `main` in GitHub settings; steps in `docs/ci.md`. The
-  workflow runs on every push; Rokit is authenticated with the run's
-  read-only token so tool downloads are not rate limited.
-
-- **Canonical content inventory.** The established list of Orthea regions,
-  quests, Cants, Verses, Burdens, Waymarks, bosses, and Descents is not in
-  the repository. Tasks that need real IDs use only the known first-slice
-  items (the Nearness Cant, Waymark I) and leave the rest for the inventory.
-- **Nearness mechanics (BM-063, BM-066).** The established Nearness
-  effect, cooldown, cost and usable states are needed to replace the
-  provisional kit in `src/server/Combat/Cants.luau`.
-- **Dissonance canon (BM-068).** Thresholds, accumulation and decay
-  rates, and the canonical Dissonance actions.
+  `checks` status on `main` in GitHub settings; steps in `docs/ci.md`.
 - **Original 96-task register.** Not available; the 136-task plan is used
   as-is.
+- **Design specifications.** See the next section. BM-066 cannot start,
+  and BM-062 to BM-069 cannot be accepted, without them.
+
+## Design specifications needed
+
+The only design source in the repository is `docs/technical-plan-2.0.md`.
+It says the canonical content inventory is not included and gives no
+mechanic for Nearness, any Verse, Dissonance or any Burden. Nothing below
+has been invented; where code needed a value, it is marked PLACEHOLDER.
+
+1. **Nearness (BM-062, BM-063).**
+   - What Nearness does when used: effect, targets, range, duration.
+   - How the player triggers it: its own input, or only through Verses.
+   - Cooldown, cost and resource pool, and the combat states it can be
+     used in.
+   - How it is unlocked, and whether it is always the starter.
+2. **Cant loadout (BM-062, BM-064).**
+   - How many Cants a player can have equipped at once.
+   - Any rules about which Cants cannot be equipped together.
+   - The full list of Cants with canonical names and unlock conditions.
+3. **Nearness Verses (BM-065, BM-066).**
+   - Name of each Verse needed for the vertical slice.
+   - For each: effect, target type and range, cast time, cooldown, cost.
+   - How each Verse is unlocked and any order between them.
+   - Whether being hit interrupts a cast, and what is lost if so.
+4. **Dissonance (BM-068).**
+   - What raises it and by how much; whether and how it falls.
+   - The thresholds or states, and what each one does to the player.
+   - The canonical Dissonance actions: name, requirement, effect, cooldown.
+   - Whether it is saved between sessions (the profile has a
+     `burdens.dissonance` field) and how it relates to Burdens.
+5. **Burdens (BM-069 to BM-071).**
+   - Name of each Burden and what it does (stat changes or other rules).
+   - How a Burden is offered and acquired, and how it is removed.
+   - Which Burdens cannot be held together; whether any can stack.
+   - The limit on active Burdens (the plan caps the saved list at 8).
+6. **Remaining inventory (Phase D onward).** Canonical names for the
+   first region, its quests, Waymark I's requirements and rewards, the
+   first Descent and its boss.

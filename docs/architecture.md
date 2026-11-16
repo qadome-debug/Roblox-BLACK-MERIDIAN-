@@ -251,3 +251,15 @@ requests), `Persistence` (leases, receipts, fault matrices), `Content`
   self-test (`--self-test`) with fixtures for each failure class.
 - A request type not in the plan's registry (section 3.3) is not added
   without a backlog task, a validator, and abuse tests.
+
+## Studio play-test seam
+
+`Bootstrap.server.luau` and `Bootstrap.client.luau` each look for a
+play-test module, in Studio only. The modules exist only in the build made
+from `playtest.project.json` (`src/tests/Playtest/`); the default build has
+none, and outside Studio the lookup never runs. The server module can supply
+in-memory DataStores and is handed the constructed services for assertions.
+It adds no remote to the game's remote folder and no gameplay rule.
+
+`Services/Loadout` copies the saved equipped Cant from the profile into the
+combat layer whenever the profile becomes ready or the combatant is added.

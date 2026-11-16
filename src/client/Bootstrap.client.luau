@@ -32,3 +32,17 @@ end)
 net:whenReady(function()
 	print("[BlackMeridian] Client handshake complete")
 end)
+
+-- Studio play-test hook (development only). The play-test build adds a
+-- PlaytestClient module beside this script; the default build has none.
+-- It drives requests through this same Net controller, so the server sees
+-- exactly what it would see from a real client.
+if game:GetService("RunService"):IsStudio() then
+	local driver = script.Parent:FindFirstChild("PlaytestClient")
+	if driver ~= nil and driver:IsA("ModuleScript") then
+		task.spawn(function()
+			local run = (require :: any)(driver) :: (net: Net.Controller, combat: any) -> ()
+			run(net, combat)
+		end)
+	end
+end

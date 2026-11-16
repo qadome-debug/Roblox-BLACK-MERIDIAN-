@@ -13,6 +13,11 @@
 --     than the general attribute limits, so no Burden can trivialise or
 --     zero out a stat.
 --
+-- SCHEMA ASSUMPTIONS (not canon): the acquisition sources, stacking
+-- (`maxStacks`; the saved profile keeps a plain list of active Burdens) and
+-- stat modifiers as the only kind of consequence are this catalog's
+-- working shape until the design states what Burdens do.
+--
 -- `resolve` is the entry point for client input. The canonical Burden
 -- list is not yet in the design inventory, so the production catalog is
 -- empty and valid.

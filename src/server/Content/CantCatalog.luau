@@ -13,6 +13,12 @@
 --     that Cant;
 --   * unlock references (Waymarks, quests) are canonical IDs.
 --
+-- SCHEMA ASSUMPTIONS (not canon): the two slot names, the unlock kinds
+-- (starter / waymark / quest) and the exclusion list are this catalog's
+-- working shape. The saved profile holds a single equipped Cant. Revise
+-- when the design states how many Cants can be equipped and how each is
+-- unlocked.
+--
 -- `mechanics` records whether the Cant's mechanical values are canonical
 -- yet. A "provisional" Cant has its rules wired but its tuning waits on the
 -- design inventory; launch validation (BM-130) refuses provisional Cants

@@ -13,6 +13,9 @@
 -- What the Cant then does is its `effect`, resolved on the server with the
 -- simulation in hand. Effects never take client data.
 --
+-- PLACEHOLDER: no client request for activating a Cant has been
+-- specified, so `activate` is reachable only from server code today.
+--
 -- Tuning (cooldown, cost, usable states, effect) comes from a `Kit` per
 -- Cant. Nearness's canonical mechanics are not yet in the design
 -- inventory, so its production kit is marked provisional: its effect only

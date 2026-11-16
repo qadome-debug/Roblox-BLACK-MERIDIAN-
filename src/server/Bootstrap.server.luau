@@ -8,6 +8,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
 
 local CantEquip = require(script.Parent.Network.Adapters.CantEquip)
 local CharacterService = require(script.Parent.Services.CharacterService)
@@ -18,6 +19,7 @@ local CombatService = require(script.Parent.Services.CombatService)
 local Config = require(script.Parent.Config)
 local Dispatcher = require(script.Parent.Network.Dispatcher)
 local DissonanceAction = require(script.Parent.Network.Adapters.DissonanceAction)
+local Loadout = require(script.Parent.Services.Loadout)
 local Logger = require(script.Parent.Logging.Logger)
 local ProfileService = require(script.Parent.Services.ProfileService)
 local Protocol = require(ReplicatedStorage.Shared.Contracts.Protocol)
@@ -54,6 +56,23 @@ local logger = Logger.new({
 }):with({ correlationId = Logger.correlationId(serverRng:fork("server")) })
 local telemetry = Telemetry.new(logger)
 
+-- Studio play-test seam (development only). The play-test build
+-- (playtest.project.json) mounts the test tree in ServerStorage; the
+-- default build has none, and outside Studio this is never looked up. The
+-- harness supplies in-memory DataStores so profiles can load and save in
+-- an unpublished place, and is handed the services for assertions.
+type Playtest = { stores: () -> any?, start: (services: { [string]: any }) -> () }
+local playtest: Playtest? = nil
+if config.environment == "studio" then
+	local tests = ServerStorage:FindFirstChild("Tests")
+	local folder = if tests ~= nil then tests:FindFirstChild("Playtest") else nil
+	local module = if folder ~= nil then folder:FindFirstChild("Server") else nil
+	if module ~= nil and module:IsA("ModuleScript") then
+		playtest = (require :: any)(module) :: Playtest
+		logger:warn("lifecycle", "playtest_harness_active", {})
+	end
+end
+
 logger:info("lifecycle", "server_bootstrap_loaded", {
 	environment = config.environment,
 	readOnly = config.readOnly,
@@ -88,6 +107,12 @@ local sessions = Session.new({
 -- Studio and development degrade to stores whose every call fails, so the
 -- server stays up and players remain non-mutating (plan 2.3).
 local function openStores(): ProfileService.Stores
+	if playtest ~= nil then
+		local memoryStores = playtest.stores()
+		if memoryStores ~= nil then
+			return memoryStores
+		end
+	end
 	local names: { [string]: string } = {
 		profiles = ProfileService.STORE_NAME,
 		runs = "DescentRuns",
@@ -115,6 +140,9 @@ local function openStores(): ProfileService.Stores
 	return stores :: any
 end
 
+-- Set once combat exists (stage 3); profiles finish loading after that.
+local restoreLoadout: ((userId: number) -> ())? = nil
+
 local profiles = ProfileService.new({
 	config = config,
 	clock = clock,
@@ -123,6 +151,9 @@ local profiles = ProfileService.new({
 	telemetry = telemetry,
 	markProfileLoaded = function(player, loaded)
 		sessions:markProfileLoaded(player, loaded)
+		if loaded and restoreLoadout ~= nil then
+			restoreLoadout(player.UserId)
+		end
 	end,
 	stores = openStores(),
 	jobId = if game.JobId ~= "" then game.JobId else "studio",
@@ -201,6 +232,12 @@ local combat = CombatService.new({
 	end,
 })
 
+-- The saved loadout is mirrored into combat whenever the profile becomes
+-- ready or the combatant is added, whichever happens last.
+restoreLoadout = function(userId: number)
+	Loadout.restore({ profiles = profiles, combat = combat, logger = logger }, userId)
+end
+
 -- Stage 4: dispatcher and adapters.
 local limiter = RateLimiter.new({ clock = clock })
 local dispatcher = Dispatcher.new({
@@ -230,6 +267,9 @@ local function onCharacterAdded(player: Player, character: Model)
 	end
 	if not combat:hasPlayer(player.UserId) then
 		combat:addPlayer(player.UserId)
+	end
+	if restoreLoadout ~= nil then
+		restoreLoadout(player.UserId)
 	end
 end
 
@@ -304,3 +344,14 @@ game:BindToClose(function()
 end)
 
 logger:info("lifecycle", "server_ready", { actions = #dispatcher:registeredActions() })
+
+if playtest ~= nil then
+	playtest.start({
+		combat = combat,
+		profiles = profiles,
+		characters = characters,
+		sessions = sessions,
+		dispatcher = dispatcher,
+		logger = logger,
+	})
+end

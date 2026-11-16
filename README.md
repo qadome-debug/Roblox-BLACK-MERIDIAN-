@@ -157,6 +157,21 @@ lune run tools/run-tests.luau --root tools/fixtures/tests/failing
 
 (expected to exit 1). Wiring every check into CI is BM-010.
 
+## Studio play-test
+
+The default build cannot exercise gameplay in Studio, because an
+unpublished place has no DataStores. A separate build adds a scripted
+play-test with in-memory stores (Studio only, never part of the game):
+
+```bash
+rojo build playtest.project.json -o BlackMeridianPlaytest.rbxl
+```
+
+Open the file in Roblox Studio and press Play. The driver runs about fifty
+checks through the real client network path and shows `ok` / `FAIL` lines
+on screen and in the Output window with a `[PT]` prefix. The harness lives
+in `src/tests/Playtest/`; the latest results are in `docs/reviews/`.
+
 ## Documents
 
 | File                          | Purpose                                                        |
