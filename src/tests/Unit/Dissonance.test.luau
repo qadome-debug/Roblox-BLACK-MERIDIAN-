@@ -99,7 +99,8 @@ suite:case("the five bands are the design's, with exact boundaries", function(en
 end)
 
 suite:case("the meter is clamped, and a jump across bands is one event", function(env)
-	local s = setup(env)
+	-- No rupture reset here, so the meter can be seen at its ceiling.
+	local s = setup(env, { tuning = {} })
 	Assert.equal(s.layer:add("a", 90, "unstableArea"), 90, "raised")
 	local changes = s.events("dissonance_band_changed")
 	Assert.count(changes, 1, "one event for the jump")
@@ -137,15 +138,15 @@ suite:case("only the design's sources raise or recover Dissonance", function(env
 	end, "unknown recovery source", "time alone is not a recovery source")
 end)
 
-suite:case("nothing recovers by itself until a rate is approved", function(env)
-	-- Production: no tuning and no stable-environment check.
+suite:case("nothing recovers by itself: only authorised sources recover", function(env)
+	-- Production tuning, but no stable-environment check exists yet.
 	local s = setup(env)
 	s.layer:add("a", 50, "verse")
 	for _ = 1, 600 do
 		s.sim:step()
 	end
 	Assert.equal(s.layer:value("a"), 50, "no decay over time")
-	Assert.isNil(Dissonance.PRODUCTION_TUNING.stableRecoveryPerSecond, "no approved rate")
+	Assert.equal(Dissonance.PRODUCTION_TUNING.stableRecoveryPerSecond, 5, "an initial rate exists")
 
 	-- A rate without a stable environment still recovers nothing.
 	local outside = setup(env, { tuning = { stableRecoveryPerSecond = 6 } })
@@ -302,5 +303,103 @@ suite:case(
 		Assert.equal(combat.dissonance:band(combat:combatantId(1)).name, "Stable", "and Stable")
 	end
 )
+
+suite:case("initial amounts are configurable and every source uses its own", function(env)
+	local t = Dissonance.PRODUCTION_TUNING
+	Assert.equal(t.unstableAreaPerSecond, 1, "unstable area +1 per second")
+	Assert.equal(t.enemyAttackPerHit, 3, "enemy attack +3 per hit")
+	Assert.equal(t.failedContainmentGain, 15, "failed containment +15")
+	Assert.equal(t.campRecovery, 30, "camp -30")
+	Assert.equal(t.consumableRecovery, 20, "consumable -20")
+	Assert.equal(t.encounterRecovery, 20, "encounter -20")
+	Assert.equal(t.cooperativeRecovery, 10, "cooperative -10")
+	Assert.equal(t.ruptureResetTo, 60, "rupture drops to 60")
+
+	local s = setup(env)
+	s.layer:gainFrom("a", "enemyAttack")
+	s.layer:gainFrom("a", "enemyAttack")
+	Assert.equal(s.layer:value("a"), 6, "repeated hits accumulate")
+	s.layer:gainFrom("a", "failedContainment")
+	Assert.equal(s.layer:value("a"), 21, "failed containment")
+	s.layer:recoverFrom("a", "camp")
+	Assert.equal(s.layer:value("a"), 0, "a camp removes up to 30")
+	s.layer:add("a", 50, "relic")
+	s.layer:recoverFrom("a", "consumable")
+	s.layer:recoverFrom("a", "encounterComplete")
+	s.layer:recoverFrom("a", "cooperative")
+	Assert.equal(s.layer:value("a"), 0, "20 + 20 + 10 from 50")
+	s.layer:add("a", 90, "unstableArea")
+	s.layer:recoverFrom("a", "anchor")
+	Assert.equal(s.layer:value("a"), 0, "an anchor resets to 0")
+
+	-- Different numbers when configured; nothing else changes.
+	local custom = setup(env, { tuning = { enemyAttackPerHit = 7, campRecovery = 3 } })
+	custom.layer:gainFrom("a", "enemyAttack")
+	Assert.equal(custom.layer:value("a"), 7, "configured hit")
+	custom.layer:gainFrom("a", "failedContainment")
+	Assert.equal(custom.layer:value("a"), 7, "an unset amount does nothing")
+	custom.layer:recoverFrom("a", "camp")
+	Assert.equal(custom.layer:value("a"), 4, "configured camp")
+
+	for _, bad in
+		{
+			{ enemyAttackPerHit = 0 },
+			{ campRecovery = 101 },
+			{ ruptureResetTo = 100 },
+			{ campRecovery = 0 / 0 },
+		}
+	do
+		Assert.throws(function()
+			setup(env, { tuning = bad :: any })
+		end, "must be within", "bad tuning")
+	end
+end)
+
+suite:case(
+	"a rupture drops the meter and touches nothing else; a region handler can take over",
+	function(env)
+		local s = setup(env)
+		s.layer:add("a", 100, "failedContainment")
+		Assert.equal(s.layer:value("a"), 60, "default: drops to 60")
+		Assert.count(s.events("dissonance_rupture"), 1, "announced")
+		Assert.equal(
+			s.layer:band("a").name,
+			"Noticeable instability",
+			"back out of the danger bands"
+		)
+		-- Repeated ruptures repeat the same safe outcome.
+		s.layer:add("a", 100, "failedContainment")
+		Assert.equal(s.layer:value("a"), 60, "again")
+
+		local handled: { string } = {}
+		local region = setup(env, {
+			onRupture = function(id: string)
+				table.insert(handled, id)
+			end,
+		})
+		region.layer:add("a", 100, "failedContainment")
+		Assert.deepEqual(handled, { "a" }, "the region decides")
+		Assert.equal(region.layer:value("a"), 100, "the layer does not second-guess it")
+	end
+)
+
+suite:case("unstable areas raise the meter only while inside one", function(env)
+	local inside = false
+	local s = setup(env, {
+		inUnstableArea = function(_id: string): boolean
+			return inside
+		end,
+	})
+	for _ = 1, 30 do
+		s.sim:step()
+	end
+	Assert.equal(s.layer:value("a"), 0, "outside: nothing")
+	inside = true
+	local perSecond = math.floor(1 / s.sim.stepSeconds + 0.5)
+	for _ = 1, perSecond do
+		s.sim:step()
+	end
+	Assert.isTrue(math.abs(s.layer:value("a") - 1) < 1e-6, "+1 per second inside")
+end)
 
 return suite:cases()

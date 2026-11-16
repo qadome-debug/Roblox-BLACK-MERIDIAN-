@@ -59,12 +59,28 @@ export type RecoverySource =
 	| "encounterComplete"
 	| "cooperative"
 
--- The values the design has not fixed. Every field is optional; an unset
--- field switches its behaviour off rather than falling back to a guess.
+-- Amounts. Every field is optional; an unset field switches its behaviour
+-- off rather than falling back to a guess. The production values below are
+-- INITIAL BALANCING values approved 2026-11-16, not final balance.
 export type Tuning = {
 	-- Meter removed per second while a combatant is in a stable
-	-- environment.
+	-- environment (the only passive recovery).
 	stableRecoveryPerSecond: number?,
+	-- Meter added per second while in an unstable area.
+	unstableAreaPerSecond: number?,
+	-- Meter added per hit from an enemy that raises Dissonance.
+	enemyAttackPerHit: number?,
+	-- Meter added per failed containment.
+	failedContainmentGain: number?,
+	-- Meter removed by a camp, an approved consumable, completing an
+	-- encounter, and a cooperative action.
+	campRecovery: number?,
+	consumableRecovery: number?,
+	encounterRecovery: number?,
+	cooperativeRecovery: number?,
+	-- Where the meter drops to after a rupture the region or encounter did
+	-- not handle itself.
+	ruptureResetTo: number?,
 }
 
 export type ActionContext = {
@@ -90,13 +106,25 @@ export type Deps = {
 	-- Whether a combatant is in a stable environment right now. Supplied by
 	-- the world layer; without it nobody is.
 	inStableEnvironment: ((id: string) -> boolean)?,
-	-- Region or encounter handler for a rupture.
+	-- Whether a combatant is in an unstable area right now.
+	inUnstableArea: ((id: string) -> boolean)?,
+	-- Region or encounter handler for a rupture. Without one the meter
+	-- drops to `ruptureResetTo`. A rupture never touches progress or
+	-- inventory: this layer cannot.
 	onRupture: ((id: string) -> ())?,
 }
 
 export type Layer = {
 	add: (self: Layer, id: string, amount: number, source: GainSource) -> number,
 	recover: (self: Layer, id: string, amount: number, source: RecoverySource) -> number,
+	-- Gain or recovery by the configured amount for a source. Anchors reset
+	-- the meter to 0. Sources with no configured amount do nothing.
+	gainFrom: (self: Layer, id: string, source: "enemyAttack" | "failedContainment") -> number,
+	recoverFrom: (
+		self: Layer,
+		id: string,
+		source: "anchor" | "camp" | "consumable" | "encounterComplete" | "cooperative"
+	) -> number,
 	value: (self: Layer, id: string) -> number,
 	-- Band index, 0 (Stable) to 4 (Controlled rupture).
 	level: (self: Layer, id: string) -> number,
@@ -138,13 +166,38 @@ Dissonance.RECOVERY_SOURCES = table.freeze({
 	cooperative = true,
 } :: { [string]: boolean })
 
--- No values are approved yet, so production tuning sets nothing.
-Dissonance.PRODUCTION_TUNING = table.freeze({} :: Tuning)
+-- Initial balancing values (approved 2026-11-16); configurable per server
+-- through CombatService dissonanceTuning. Relics, camps, consumables,
+-- cooperative actions and enemy flags need systems that do not exist yet;
+-- their amounts are here so those systems only have to call the layer.
+Dissonance.PRODUCTION_TUNING = table.freeze({
+	stableRecoveryPerSecond = 5,
+	unstableAreaPerSecond = 1,
+	enemyAttackPerHit = 3,
+	failedContainmentGain = 15,
+	campRecovery = 30,
+	consumableRecovery = 20,
+	encounterRecovery = 20,
+	cooperativeRecovery = 10,
+	ruptureResetTo = 60,
+} :: Tuning)
 
 -- Empty until a design for player-triggered actions is approved.
 Dissonance.PRODUCTION_ACTIONS = table.freeze({} :: { [string]: ActionDef })
 
 local MAX_CHANGE = 1000
+
+local TUNING_FIELDS: { [string]: boolean } = {
+	stableRecoveryPerSecond = true,
+	unstableAreaPerSecond = true,
+	enemyAttackPerHit = true,
+	failedContainmentGain = true,
+	campRecovery = true,
+	consumableRecovery = true,
+	encounterRecovery = true,
+	cooperativeRecovery = true,
+	ruptureResetTo = true,
+}
 
 local function isFinite(value: unknown): boolean
 	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
@@ -167,17 +220,19 @@ function Dissonance.validateTuning(tuning: unknown): { string }
 	end
 	local t = tuning :: { [string]: any }
 	local problems: { string } = {}
-	for key in t do
-		if key ~= "stableRecoveryPerSecond" then
+	for key, value in t do
+		if not TUNING_FIELDS[key] then
 			table.insert(problems, "unknown tuning field " .. tostring(key))
+			continue
 		end
-	end
-	local rate = t.stableRecoveryPerSecond
-	if rate ~= nil and (not isFinite(rate) or rate <= 0 or rate > Dissonance.MAX) then
-		table.insert(
-			problems,
-			"stableRecoveryPerSecond must be within (0, " .. Dissonance.MAX .. "]"
-		)
+		local isReset = key == "ruptureResetTo"
+		local high = if isReset then Dissonance.MAX - 1 else Dissonance.MAX
+		if not isFinite(value) or (if isReset then value < 0 else value <= 0) or value > high then
+			table.insert(
+				problems,
+				key .. " must be within " .. (if isReset then "[0, " else "(0, ") .. high .. "]"
+			)
+		end
 	end
 	return problems
 end
@@ -218,6 +273,7 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 	local actions = (deps and deps.actions) or Dissonance.PRODUCTION_ACTIONS
 	local inStableEnvironment = deps and deps.inStableEnvironment
 	local onRupture = deps and deps.onRupture
+	local inUnstableArea = deps and deps.inUnstableArea
 	local problems = Dissonance.validateTuning(tuning)
 	for actionId, def in actions do
 		for _, p in Dissonance.validateAction(def) do
@@ -231,6 +287,10 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 	local stableRecoveryPerStep: number? = nil
 	if tuning.stableRecoveryPerSecond ~= nil then
 		stableRecoveryPerStep = tuning.stableRecoveryPerSecond * sim.stepSeconds
+	end
+	local unstableGainPerStep: number? = nil
+	if tuning.unstableAreaPerSecond ~= nil then
+		unstableGainPerStep = tuning.unstableAreaPerSecond * sim.stepSeconds
 	end
 
 	local meters: { [string]: number } = {}
@@ -253,10 +313,13 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 			source = source,
 		})
 		if level == Dissonance.RUPTURE_LEVEL then
-			-- What a rupture does belongs to the region or encounter.
+			-- What a rupture does belongs to the region or encounter. With no
+			-- handler the meter simply drops; nothing else is touched.
 			sim:emit("dissonance_rupture", id, { source = source })
 			if onRupture ~= nil then
 				onRupture(id)
+			elseif tuning.ruptureResetTo ~= nil then
+				set(id, tuning.ruptureResetTo, "rupture")
 			end
 		end
 	end
@@ -301,6 +364,38 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		return self:value(id)
 	end
 
+	function layer:gainFrom(id: string, source: "enemyAttack" | "failedContainment"): number
+		local amount = if source == "enemyAttack"
+			then tuning.enemyAttackPerHit
+			else tuning.failedContainmentGain
+		if amount == nil then
+			return self:value(id)
+		end
+		return self:add(id, amount, source)
+	end
+
+	function layer:recoverFrom(
+		id: string,
+		source: "anchor" | "camp" | "consumable" | "encounterComplete" | "cooperative"
+	): number
+		local amount: number? = nil
+		if source == "anchor" then
+			amount = Dissonance.MAX -- anchors reset the meter to 0
+		elseif source == "camp" then
+			amount = tuning.campRecovery
+		elseif source == "consumable" then
+			amount = tuning.consumableRecovery
+		elseif source == "encounterComplete" then
+			amount = tuning.encounterRecovery
+		else
+			amount = tuning.cooperativeRecovery
+		end
+		if amount == nil then
+			return self:value(id)
+		end
+		return self:recover(id, amount, source)
+	end
+
 	function layer:perform(id: string, actionId: string): ActionMachine.Outcome
 		local actor = sim:get(id)
 		if actor == nil then
@@ -336,19 +431,35 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 	end
 
 	sim:onStep(function(_step: number)
-		local ids: { string } = {}
+		-- Every combatant: an unstable area can raise a meter that is at 0.
+		local ids: { string } = table.clone(sim:ids())
 		for id in meters do
-			table.insert(ids, id)
-		end
-		table.sort(ids)
-		for _, id in ids do
-			if sim:get(id) == nil then
+			if table.find(ids, id) == nil then
 				meters[id] = nil
 				levels[id] = nil
-				continue
 			end
-			-- Passive recovery happens only in a stable environment, and
-			-- only once its rate has been approved.
+		end
+		for _, id in ids do
+			if meters[id] == nil then
+				if
+					unstableGainPerStep == nil
+					or inUnstableArea == nil
+					or not inUnstableArea(id)
+				then
+					continue
+				end
+				meters[id] = 0
+			end
+			-- Unstable areas raise the meter while the combatant stands in one.
+			if
+				unstableGainPerStep ~= nil
+				and inUnstableArea ~= nil
+				and meters[id] < Dissonance.MAX
+				and inUnstableArea(id)
+			then
+				set(id, meters[id] + unstableGainPerStep, "unstableArea")
+			end
+			-- Passive recovery happens only in a stable environment.
 			if
 				stableRecoveryPerStep ~= nil
 				and inStableEnvironment ~= nil

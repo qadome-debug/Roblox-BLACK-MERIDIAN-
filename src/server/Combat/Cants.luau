@@ -27,6 +27,8 @@ export type Deps = {
 	-- Catalog check, for example CantCatalog:resolve. Without it every
 	-- well-formed ID is accepted (tests only).
 	resolve: ((value: unknown) -> string?)?,
+	-- Called after the equipped Cant changed (equipped or cleared).
+	onChanged: ((id: string, cantId: string?) -> ())?,
 }
 
 export type Layer = {
@@ -45,6 +47,7 @@ local OK: ActionMachine.Outcome = { ok = true } :: any
 
 function Cants.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 	local resolve = deps and deps.resolve
+	local onChanged = deps and deps.onChanged
 	local equippedBy: { [string]: string } = {}
 
 	local layer = {} :: Layer
@@ -56,6 +59,9 @@ function Cants.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		end
 		if cantId == nil then
 			equippedBy[id] = nil
+			if onChanged ~= nil then
+				onChanged(id, nil)
+			end
 			return OK
 		end
 		if resolve ~= nil and resolve(cantId) == nil then
@@ -65,6 +71,9 @@ function Cants.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 			return fail("busy")
 		end
 		equippedBy[id] = cantId
+		if onChanged ~= nil then
+			onChanged(id, cantId)
+		end
 		return OK
 	end
 

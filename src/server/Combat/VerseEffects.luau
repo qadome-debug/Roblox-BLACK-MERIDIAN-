@@ -49,6 +49,9 @@ export type Deps = {
 	-- Moves a combatant to a position the server has chosen (and its
 	-- character, for a player).
 	move: (id: string, to: Vec3.Vec3) -> (),
+	-- Called when a Verse moved its own caster (a Close Step); Burdens
+	-- count these as Nearness movement.
+	onSelfMove: ((id: string) -> ())?,
 }
 
 export type Layer = {
@@ -219,6 +222,9 @@ function VerseEffects.attach(sim: Simulation.Simulation, deps: Deps): Layer
 			return false
 		end
 		move(caster.id, reached)
+		if deps.onSelfMove ~= nil then
+			deps.onSelfMove(caster.id)
+		end
 		emitMotion(caster.id, ctx.verseId, "lunge", from, reached, p.lungeSeconds, nil)
 		return true
 	end

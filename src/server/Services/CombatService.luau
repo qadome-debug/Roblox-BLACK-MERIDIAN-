@@ -14,6 +14,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ActionMachine = require(script.Parent.Parent.Combat.ActionMachine)
 local Ai = require(script.Parent.Parent.Combat.Ai)
 local Attributes = require(script.Parent.Parent.Combat.Attributes)
+local BurdenCatalog = require(script.Parent.Parent.Content.BurdenCatalog)
+local BurdenEffects = require(script.Parent.Parent.Combat.BurdenEffects)
 local CantCatalog = require(script.Parent.Parent.Content.CantCatalog)
 local Cants = require(script.Parent.Parent.Combat.Cants)
 local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
@@ -73,6 +75,13 @@ export type Deps = {
 	-- World hooks for Dissonance: whether a combatant is in a stable
 	-- environment, and the region or encounter handler for a rupture.
 	inStableEnvironment: ((combatantId: string) -> boolean)?,
+	inUnstableArea: ((combatantId: string) -> boolean)?,
+	-- Burden catalog (default BurdenCatalog.production()). A player gets
+	-- the default Burden of the equipped Cant; a mastery Burden needs
+	-- both of these, and no mastery trial exists yet.
+	burdenCatalog: BurdenCatalog.Catalog?,
+	chosenBurden: ((userId: number) -> string?)?,
+	masteryUnlocked: ((userId: number) -> boolean)?,
 	onRupture: ((combatantId: string) -> ())?,
 }
 
@@ -119,6 +128,7 @@ export type Service = {
 	verses: Verses.Layer,
 	dissonance: Dissonance.Layer,
 	verseEffects: VerseEffects.Layer?,
+	burdens: BurdenEffects.Layer,
 	verseCatalog: VerseCatalog.Catalog,
 }
 
@@ -153,9 +163,26 @@ function CombatService.new(deps: Deps): Service
 	local ai = Ai.attach(sim, { logger = deps.logger, navigator = deps.navigator, damage = damage })
 	local replication = Replication.new(sim, { targeting = targeting })
 	local catalog = deps.cantCatalog or CantCatalog.production()
+	local burdenCatalog = deps.burdenCatalog or BurdenCatalog.production()
+	local burdens = BurdenEffects.attach(sim, {
+		catalog = burdenCatalog,
+		inStableEnvironment = deps.inStableEnvironment,
+	})
+	local playerIds: { [string]: number } = {}
 	local cants = Cants.attach(sim, {
 		resolve = function(value)
 			return catalog:resolve(value)
+		end,
+		-- The Burden follows the equipped Cant.
+		onChanged = function(id: string, cantId: string?)
+			local userId = playerIds[id]
+			local chosen = if userId ~= nil and deps.chosenBurden ~= nil
+				then deps.chosenBurden(userId)
+				else nil
+			local unlocked = userId ~= nil
+				and deps.masteryUnlocked ~= nil
+				and deps.masteryUnlocked(userId)
+			burdens:sync(id, cantId, chosen, unlocked)
 		end,
 	})
 	local verseCatalog = deps.verseCatalog or VerseCatalog.production()
@@ -163,14 +190,17 @@ function CombatService.new(deps: Deps): Service
 		tuning = deps.dissonanceTuning,
 		actions = deps.dissonanceActions,
 		inStableEnvironment = deps.inStableEnvironment,
+		inUnstableArea = deps.inUnstableArea,
 		onRupture = deps.onRupture,
 	})
-	local playerIds: { [string]: number } = {}
 	local verseEffects: VerseEffects.Layer? = nil
 	local effects: { [string]: Verses.Effect } = {}
 	if deps.world ~= nil then
 		local movement = VerseEffects.attach(sim, {
 			world = deps.world,
+			onSelfMove = function(id: string)
+				burdens:onNearnessMove(id)
+			end,
 			move = function(id: string, to: Vec3.Vec3)
 				local combatant = sim:get(id)
 				if combatant == nil then
@@ -210,6 +240,7 @@ function CombatService.new(deps: Deps): Service
 		if verseEffects ~= nil then
 			verseEffects:tick(step)
 		end
+		burdens:tick()
 		targeting:tick()
 		replication:collect()
 	end)
@@ -227,6 +258,7 @@ function CombatService.new(deps: Deps): Service
 	service.dissonance = dissonance
 	service.verseCatalog = verseCatalog
 	service.verseEffects = verseEffects
+	service.burdens = burdens
 
 	local function log(
 		level: Logger.Level,
@@ -275,6 +307,7 @@ function CombatService.new(deps: Deps): Service
 		players[userId] = nil
 		lastRevisionSent[userId] = nil
 		cants:forget(playerId(userId))
+		burdens:forget(playerId(userId))
 		verses:forget(playerId(userId))
 		dissonance:forget(playerId(userId))
 		if verseEffects ~= nil then
