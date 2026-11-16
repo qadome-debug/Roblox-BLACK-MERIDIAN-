@@ -51,6 +51,8 @@ export type Deps = {
 	cants: Cants.Layer,
 	effects: { [string]: Effect }?,
 	maxTargetRange: number?,
+	-- Called after a Verse resolves (e.g. to raise Dissonance).
+	onResolved: ((casterId: string, verseId: string) -> ())?,
 }
 
 export type Cast = { verseId: string, target: string?, startedStep: number, resolveStep: number }
@@ -174,6 +176,9 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 			return
 		end
 		sim:emit("verse_resolved", id, { verseId = cast.verseId, target = cast.target })
+		if deps.onResolved ~= nil then
+			deps.onResolved(id, cast.verseId)
+		end
 		local effect = effects[cast.verseId]
 		if effect ~= nil then
 			effect({

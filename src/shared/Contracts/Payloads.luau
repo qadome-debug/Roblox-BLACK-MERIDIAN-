@@ -85,6 +85,17 @@ export type VerseCastResultData = {
 	resolveStep: number,
 }
 
+-- Dissonance actions. Owning task BM-068. Names an action only; the meter
+-- is server state and is never sent by the client.
+export type DissonanceActionPayload = {
+	actionId: string, -- opaque, <= 64 bytes, judged against server actions
+}
+
+export type DissonanceActionResultData = {
+	actionId: string,
+	level: number,
+}
+
 -- Session bootstrap. Owning task BM-017.
 export type ClientHelloPayload = {
 	protocolVersion: number,

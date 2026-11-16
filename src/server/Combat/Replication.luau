@@ -73,6 +73,8 @@ local PUBLIC_CUES: { [string]: { string } } = {
 	verse_resolved = { "verseId", "target" },
 	verse_interrupted = { "verseId" },
 	verse_fizzled = { "verseId", "reason" },
+	dissonance_level_changed = { "level", "previous" },
+	dissonance_action = { "actionId" },
 }
 
 -- Event kinds only the combatant itself may see.

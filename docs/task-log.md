@@ -75,6 +75,7 @@ when its code compiled.
 | BM-065 | Done   | 2026-11-15 | Server `VerseCatalog`: typed definitions (Cant, up to three distinct pool costs bounded to (0, 1000], integer cast/cooldown steps with caps, prerequisites of same-Cant Verses plus optional Waymark/quest, mechanics flag) validated against the registry (no fabricated or missing Verses, registry Cant must match, canonical prerequisite refs, no self-requirement or cycles); `resolve`, `forCant`, `isCompatible`, `prerequisitesMet` from server facts; production list empty until canonical Verse names arrive (6 tests) |
 | BM-066 | Blocked | 2026-11-15 | Needs the canonical Nearness Verse names and mechanics; the Verse catalog, cast pipeline and adapter are ready to take them |
 | BM-067 | Done   | 2026-11-15 | Server Verse cast pipeline in the combat simulation (alive, not mid-action, one cast at a time, catalog-defined, compatible with the equipped Cant, per-Verse step cooldown, all-or-nothing costs, target hint verified for existence/self/liveness/range; cast time, interruption by Hit/Staggered/Dead with costs and cooldown kept, fizzle on lost target, server-only effects; public cues); `VerseCast` contract, validator and adapter (catalog check, profile unlock check as UNAUTHORIZED, combatant); CombatService takes injected Cant/Verse catalogs, kits and effects; shared test content fixtures (7 security tests) |
+| BM-068 | Partial | 2026-11-15 | Server Dissonance layer: per-combatant meter raised only by the server (resolved Verses via a pipeline hook), clamped, numbered levels at ascending thresholds with one event per change, decay after a quiet period, validated tuning; data-driven actions (min level, consume/add, step cooldown, server effect); `DissonanceAction` contract/validator (action name only, no meter values) and adapter; public cues; deterministic-replay test (6 tests). Tuning is provisional and the production action list is empty: canonical thresholds, rates and actions are not in the repository. Own-view meter replication is still to add |
 
 ## Blockers
 
@@ -90,5 +91,7 @@ when its code compiled.
 - **Nearness mechanics (BM-063, BM-066).** The established Nearness
   effect, cooldown, cost and usable states are needed to replace the
   provisional kit in `src/server/Combat/Cants.luau`.
+- **Dissonance canon (BM-068).** Thresholds, accumulation and decay
+  rates, and the canonical Dissonance actions.
 - **Original 96-task register.** Not available; the 136-task plan is used
   as-is.

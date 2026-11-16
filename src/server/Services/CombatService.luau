@@ -20,6 +20,7 @@ local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
 local CombatReplication = require(ReplicatedStorage.Shared.Contracts.CombatReplication)
 local Damage = require(script.Parent.Parent.Combat.Damage)
 local Defense = require(script.Parent.Parent.Combat.Defense)
+local Dissonance = require(script.Parent.Parent.Combat.Dissonance)
 local Hitboxes = require(script.Parent.Parent.Combat.Hitboxes)
 local Logger = require(script.Parent.Parent.Logging.Logger)
 local Replication = require(script.Parent.Parent.Combat.Replication)
@@ -59,6 +60,11 @@ export type Deps = {
 	-- Verse catalog (default VerseCatalog.production()) and server effects.
 	verseCatalog: VerseCatalog.Catalog?,
 	verseEffects: { [string]: Verses.Effect }?,
+	-- Dissonance tuning and actions (defaults: provisional tuning, no
+	-- actions) and the amount a resolved Verse adds (provisional).
+	dissonanceTuning: Dissonance.Tuning?,
+	dissonanceActions: { [string]: Dissonance.ActionDef }?,
+	dissonancePerVerse: number?,
 }
 
 export type PlayerSpec = {
@@ -99,6 +105,7 @@ export type Service = {
 	ai: Ai.Ai,
 	cants: Cants.Layer,
 	verses: Verses.Layer,
+	dissonance: Dissonance.Layer,
 	verseCatalog: VerseCatalog.Catalog,
 }
 
@@ -106,6 +113,8 @@ local CombatService = {}
 
 CombatService.PLAYER_TEAM = "players"
 CombatService.ENEMY_TEAM = "enemies"
+-- Provisional until the design inventory supplies Dissonance rates.
+CombatService.PROVISIONAL_DISSONANCE_PER_VERSE = 10
 CombatService.DEFAULT_REPLICATE_INTERVAL = 1 / 20
 
 local function playerId(userId: number): string
@@ -140,8 +149,20 @@ function CombatService.new(deps: Deps): Service
 		end,
 	})
 	local verseCatalog = deps.verseCatalog or VerseCatalog.production()
-	local verses =
-		Verses.attach(sim, { catalog = verseCatalog, cants = cants, effects = deps.verseEffects })
+	local dissonance = Dissonance.attach(sim, {
+		tuning = deps.dissonanceTuning,
+		actions = deps.dissonanceActions,
+	})
+	local dissonancePerVerse = deps.dissonancePerVerse
+		or CombatService.PROVISIONAL_DISSONANCE_PER_VERSE
+	local verses = Verses.attach(sim, {
+		catalog = verseCatalog,
+		cants = cants,
+		effects = deps.verseEffects,
+		onResolved = function(casterId: string, verseId: string)
+			dissonance:add(casterId, dissonancePerVerse, verseId)
+		end,
+	})
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL
 	sim:onStep(function()
 		ai:tick()
@@ -159,6 +180,7 @@ function CombatService.new(deps: Deps): Service
 	service.ai = ai
 	service.cants = cants
 	service.verses = verses
+	service.dissonance = dissonance
 	service.verseCatalog = verseCatalog
 
 	local function log(
@@ -208,6 +230,7 @@ function CombatService.new(deps: Deps): Service
 		lastRevisionSent[userId] = nil
 		cants:forget(playerId(userId))
 		verses:forget(playerId(userId))
+		dissonance:forget(playerId(userId))
 		sim:removeCombatant(playerId(userId))
 		replication:forgetViewer(playerId(userId))
 		log("debug", "combat_player_removed", userId)

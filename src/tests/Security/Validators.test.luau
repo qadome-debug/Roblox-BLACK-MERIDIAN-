@@ -48,11 +48,15 @@ local function expectReject(validator: Validators.Validator, raw: unknown, needl
 end
 
 suite:case("registered validators match the plan's fixed contracts", function()
-	Assert.deepEqual(
-		Validators.registered(),
-		{ "CantEquip", "ClientHello", "CombatInput", "QuestChoice", "TravelReady", "VerseCast" },
-		"registered set"
-	)
+	Assert.deepEqual(Validators.registered(), {
+		"CantEquip",
+		"ClientHello",
+		"CombatInput",
+		"DissonanceAction",
+		"QuestChoice",
+		"TravelReady",
+		"VerseCast",
+	}, "registered set")
 	Assert.isNil(Validators.forAction("BurdenChoice"), "no validator yet for BurdenChoice")
 end)
 
