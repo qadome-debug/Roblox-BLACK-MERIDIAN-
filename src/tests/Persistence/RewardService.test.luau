@@ -33,7 +33,7 @@ local CATALOG = RewardCatalog.build({
 		id = "reward-waymark",
 		kind = "permanent",
 		sources = { "waymark" },
-		grants = { waymarks = { "waymark-i" }, currencies = { ["currency-test"] = 5 } },
+		grants = { waymarks = { "waymark.branded" }, currencies = { ["currency-test"] = 5 } },
 	},
 	{
 		id = "reward-quest",
@@ -128,18 +128,24 @@ suite:case(
 	function(env)
 		local w = world(env, "job-a")
 		local t = w.own(1)
-		local result =
-			w.service:grantPermanent(t, { kind = "waymark", id = "waymark-i" }, "reward-waymark")
+		local result = w.service:grantPermanent(
+			t,
+			{ kind = "waymark", id = "waymark.branded" },
+			"reward-waymark"
+		)
 		Assert.equal(result.outcome, "granted", "granted: " .. tostring(result.reason))
-		Assert.equal(result.receiptId, "p:waymark:waymark-i:reward-waymark", "receipt id")
+		Assert.equal(result.receiptId, "p:waymark:waymark.branded:reward-waymark", "receipt id")
 		local p = stored(env, t.key)
 		Assert.equal(p.balances["currency-test"], 5, "currency")
-		Assert.equal(p.waymarks["waymark-i"].activated, true, "unlock")
+		Assert.equal(p.waymarks["waymark.branded"].activated, true, "unlock")
 		Assert.equal(p.revision, 2, "intent write then grant write")
 		Assert.isNil(p.receipts.pending[result.receiptId :: string], "intent cleared")
 
-		local again =
-			w.service:grantPermanent(t, { kind = "waymark", id = "waymark-i" }, "reward-waymark")
+		local again = w.service:grantPermanent(
+			t,
+			{ kind = "waymark", id = "waymark.branded" },
+			"reward-waymark"
+		)
 		Assert.equal(again.outcome, "duplicate", "duplicate detected before any write")
 		Assert.equal(stored(env, t.key).revision, 2, "no extra writes")
 

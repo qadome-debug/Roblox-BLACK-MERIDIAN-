@@ -19,11 +19,13 @@
 --     `<namespace>.<name>` (`near.close_step`), where the namespace belongs
 --     to its Cant: every Verse of one Cant shares it, and no two Cants
 --     share one.
---   * Legacy style, a category prefix and hyphens (`waymark-i`): still used
---     by the categories whose machine IDs the report has not defined. They
---     move to the report style when their IDs are approved; see
---     docs/id-proposals.md. An ID is never renamed in saved data without a
---     migration.
+--   * Dotted category prefix (approved 2026-11-16): regions, Descents,
+--     bosses, Waymarks and Burdens are `region.ash_quay`,
+--     `descent.lantern_vault`, `boss.lantern_maw`, `waymark.branded`,
+--     `burden.unwanted_company`.
+--   * Chapters and quests still use a hyphen prefix until their IDs are
+--     approved. An ID is never renamed in saved data without a migration
+--     (Persistence/LegacyIds, Persistence/Migrations).
 
 local Limits = require(script.Parent.Parent.Constants.Limits)
 
@@ -132,7 +134,7 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	region = {
 		key = "regions",
-		prefix = "region-",
+		prefix = "region.",
 		fields = {
 			waymarkIds = { kind = "idList", ref = { "waymark" } },
 			travelLinkIds = { kind = "idList", ref = { "region" } },
@@ -164,7 +166,7 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	burden = {
 		key = "burdens",
-		prefix = "burden-",
+		prefix = "burden.",
 		fields = {
 			-- A Burden belongs to one Cant (design report).
 			cantId = { kind = "id", ref = { "cant" } },
@@ -172,7 +174,7 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	waymark = {
 		key = "waymarks",
-		prefix = "waymark-",
+		prefix = "waymark.",
 		fields = {
 			rank = { kind = "positiveInteger" },
 			regionId = { kind = "id", ref = { "region" }, optional = true },
@@ -180,14 +182,14 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	boss = {
 		key = "bosses",
-		prefix = "boss-",
+		prefix = "boss.",
 		fields = {
 			locationId = { kind = "id", ref = { "region", "descent" } },
 		},
 	},
 	descent = {
 		key = "descents",
-		prefix = "descent-",
+		prefix = "descent.",
 		fields = {
 			entranceRegionId = { kind = "id", ref = { "region" }, optional = true },
 		},

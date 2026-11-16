@@ -17,18 +17,18 @@ local function base(): Data
 		},
 		regions = {
 			{
-				id = "region-ta",
+				id = "region.ta",
 				name = "Test Region A",
 				launchRequired = true,
-				waymarkIds = { "waymark-ta1" },
-				travelLinkIds = { "region-tb" },
+				waymarkIds = { "waymark.ta1" },
+				travelLinkIds = { "region.tb" },
 			},
 			{
-				id = "region-tb",
+				id = "region.tb",
 				name = "Test Region B",
 				launchRequired = false,
 				waymarkIds = {},
-				travelLinkIds = { "region-ta" },
+				travelLinkIds = { "region.ta" },
 			},
 		},
 		quests = {
@@ -37,7 +37,7 @@ local function base(): Data
 				name = "Test Quest",
 				launchRequired = true,
 				chapterId = "chapter-t1",
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		cants = {
@@ -53,26 +53,26 @@ local function base(): Data
 			{ id = "t.v1", name = "Test Verse", launchRequired = true, cantId = "cant.t" },
 		},
 		burdens = {
-			{ id = "burden-t", name = "Test Burden", launchRequired = true, cantId = "cant.t" },
+			{ id = "burden.t", name = "Test Burden", launchRequired = true, cantId = "cant.t" },
 		},
 		waymarks = {
 			{
-				id = "waymark-ta1",
+				id = "waymark.ta1",
 				name = "Test Waymark",
 				launchRequired = true,
 				rank = 1,
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		bosses = {
-			{ id = "boss-t", name = "Test Boss", launchRequired = true, locationId = "descent-t" },
+			{ id = "boss.t", name = "Test Boss", launchRequired = true, locationId = "descent.t" },
 		},
 		descents = {
 			{
-				id = "descent-t",
+				id = "descent.t",
 				name = "Test Descent",
 				launchRequired = true,
-				entranceRegionId = "region-ta",
+				entranceRegionId = "region.ta",
 			},
 		},
 	}
@@ -133,8 +133,8 @@ case("Canon exposes Nearness and Waymark I", function()
 		assert(Canon:has("verse", id), id .. " missing")
 		assert((Canon:getVerse(id) :: any).cantId == "cant.nearness", id .. " belongs to Nearness")
 	end
-	assert(Canon:has("waymark", "waymark-i"), "waymark-i missing")
-	assert(Canon:categoryOf("waymark-i") == "waymark", "categoryOf")
+	assert(Canon:has("waymark", "waymark.branded"), "waymark.branded missing")
+	assert(Canon:categoryOf("waymark.branded") == "waymark", "categoryOf")
 	assert(Canon:count("cant") == 4, "four launch Cants")
 	assert(Canon:count("verse") == 4, "four Nearness Verses")
 end)
@@ -169,14 +169,14 @@ case("duplicate id within a category", function()
 	local data = base()
 	table.insert(
 		data.burdens,
-		{ id = "burden-t", name = "Dup", launchRequired = false, cantId = "cant.t" }
+		{ id = "burden.t", name = "Dup", launchRequired = false, cantId = "cant.t" }
 	)
 	expectError(data, "duplicate id")
 end)
 
 case("invalid id characters", function()
 	for _, bad in
-		{ "Burden-T", "burden t", "", "-burden", ".burden", "burden-", "burden..t", "burden-t." }
+		{ "Burden-T", "burden t", "", "-burden", ".burden", "burden-", "burden..t", "burden.t." }
 	do
 		local data = base()
 		data.burdens[1].id = bad
@@ -185,7 +185,7 @@ case("invalid id characters", function()
 end)
 
 case("the approved report format: dots and underscores", function()
-	for _, good in { "cant.nearness", "near.close_step", "cant.second_voice", "waymark-i" } do
+	for _, good in { "cant.nearness", "near.close_step", "cant.second_voice", "waymark.branded" } do
 		assert(ContentRegistry.isValidId(good), good .. " must be a valid id")
 	end
 	assert(ContentRegistry.verseNamespace("near.close_step") == "near", "namespace")
@@ -239,14 +239,14 @@ end)
 
 case("id too long", function()
 	local data = base()
-	data.burdens[1].id = "burden-" .. string.rep("a", 48)
+	data.burdens[1].id = "burden." .. string.rep("a", 48)
 	expectError(data, "invalid id")
 end)
 
 case("id with wrong prefix", function()
 	local data = base()
 	data.burdens[1].id = "cant.pretending"
-	expectError(data, "must start with 'burden-'")
+	expectError(data, "must start with 'burden.'")
 end)
 
 case("missing reference", function()
@@ -263,7 +263,7 @@ end)
 
 case("self reference", function()
 	local data = base()
-	data.regions[1].travelLinkIds = { "region-ta" }
+	data.regions[1].travelLinkIds = { "region.ta" }
 	expectError(data, "references itself")
 end)
 
@@ -336,7 +336,7 @@ end)
 
 case("waymark and region must agree", function()
 	local data = base()
-	data.waymarks[1].regionId = "region-tb"
+	data.waymarks[1].regionId = "region.tb"
 	expectError(data, "does not list this Waymark")
 
 	data = base()
@@ -386,10 +386,10 @@ end)
 case("build returns a registry with sorted ids", function()
 	local registry = ContentRegistry.build(base())
 	local regions = registry:ids("region")
-	assert(#regions == 2 and regions[1] == "region-ta" and regions[2] == "region-tb", "ids sorted")
-	assert(registry:getBoss("boss-t") ~= nil, "getBoss")
-	assert(registry:getBoss("descent-t") == nil, "getBoss wrong category")
-	assert(registry:getDescent("descent-t") ~= nil, "getDescent")
+	assert(#regions == 2 and regions[1] == "region.ta" and regions[2] == "region.tb", "ids sorted")
+	assert(registry:getBoss("boss.t") ~= nil, "getBoss")
+	assert(registry:getBoss("descent.t") == nil, "getBoss wrong category")
+	assert(registry:getDescent("descent.t") ~= nil, "getDescent")
 end)
 
 return cases

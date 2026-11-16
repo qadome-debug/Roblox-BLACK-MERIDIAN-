@@ -32,6 +32,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local LegacyIds = require(script.Parent.LegacyIds)
 local Limits = require(ReplicatedStorage.Shared.Constants.Limits)
 local Logger = require(script.Parent.Parent.Logging.Logger)
 local Profile = require(ReplicatedStorage.Shared.Types.Profile)
@@ -153,7 +154,9 @@ function ReceiptCapacity.new(deps: Deps)
 				return nil
 			end
 			for id in record.receipts do
-				view.receipts[id] = true
+				-- Records are never rewritten, so a receipt archived under a
+				-- renamed ID is recognised under the new one here.
+				view.receipts[if type(id) == "string" then LegacyIds.receipt(id) else id] = true
 			end
 			view.covers[archiveKey] = true
 		end
@@ -185,10 +188,15 @@ function ReceiptCapacity.new(deps: Deps)
 		end
 		local list: { string } = {}
 		for id, flag in record.receipts do
-			if type(id) ~= "string" or flag ~= true or profile.receipts.permanent[id] ~= true then
+			if type(id) ~= "string" or flag ~= true then
 				return nil
 			end
-			table.insert(list, id)
+			-- The profile may have been migrated since the record was written.
+			local current = LegacyIds.receipt(id)
+			if profile.receipts.permanent[current] ~= true then
+				return nil
+			end
+			table.insert(list, current)
 		end
 		if #list == 0 or record.count ~= #list then
 			return nil

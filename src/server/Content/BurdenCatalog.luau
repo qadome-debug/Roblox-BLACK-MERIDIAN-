@@ -303,9 +303,35 @@ function BurdenCatalog.build(definitions: { Definition }, canon: ContentRegistry
 	return table.freeze(catalog) :: any
 end
 
--- Empty until the machine IDs of Unwanted Company and Long Way Home are
--- approved and registered.
-local PRODUCTION: { Definition } = {}
+-- Nearness's two Burdens. Both are provisional (initial test values, not
+-- final balance):
+--
+--   Unwanted Company  (default). Established design: at higher Dissonance,
+--     hostile adjacency becomes more dangerous, increasing the threat of
+--     certain nearby attacks. The designer rejected a flat incoming-damage
+--     increase. No effect is defined until a behaviour-based version is
+--     approved (docs/unwanted-company-proposal.md), so for now it has no
+--     gameplay consequence.
+--   Long Way Home  (mastery). Repeated Nearness movement without returning
+--     to stable ground builds an increasing stamina regeneration penalty:
+--     10% per qualifying move, capped at 50%, cleared on stable ground. It
+--     cannot be chosen until the mastery trial (after Waymark II) exists.
+local PRODUCTION: { Definition } = {
+	{
+		id = "burden.unwanted_company",
+		cantId = "cant.nearness",
+		role = "default",
+		mechanics = "provisional",
+	},
+	{
+		id = "burden.long_way_home",
+		cantId = "cant.nearness",
+		role = "mastery",
+		effect = "stamina_regen_penalty",
+		params = { perMove = 0.10, cap = 0.50 },
+		mechanics = "provisional",
+	},
+}
 local production: Catalog? = nil
 
 function BurdenCatalog.production(): Catalog

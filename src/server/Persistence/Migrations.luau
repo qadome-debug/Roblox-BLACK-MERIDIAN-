@@ -35,37 +35,18 @@ export type Migrator = {
 	migrate: (self: Migrator, raw: unknown) -> Result,
 }
 
+local LegacyIds = require(script.Parent.LegacyIds)
+
 local Migrations = {}
 
--- Cant IDs used before schema v3, and what each became.
-Migrations.LEGACY_CANT_IDS = table.freeze({
-	["cant-nearness"] = "cant.nearness",
-} :: { [string]: string })
+-- Cant IDs used before schema v3 (see Persistence/LegacyIds).
+Migrations.LEGACY_CANT_IDS = LegacyIds.CANT
+local renameKeys = LegacyIds.renameKeys
 
--- Renames legacy keys of a map. When both the old and the new key exist
--- the values are kept under the new key: tables are merged, anything else
--- keeps the new key's value.
-local function renameKeys(map: { [any]: any }): { [any]: any }
+local function renameReceiptKeys(map: { [any]: any }): { [any]: any }
 	local out: { [any]: any } = {}
 	for key, value in map do
-		if Migrations.LEGACY_CANT_IDS[key] == nil then
-			out[key] = value
-		end
-	end
-	for key, value in map do
-		local renamed = Migrations.LEGACY_CANT_IDS[key]
-		if renamed ~= nil then
-			local existing = out[renamed]
-			if type(existing) == "table" and type(value) == "table" then
-				for innerKey, innerValue in value do
-					if existing[innerKey] == nil then
-						existing[innerKey] = innerValue
-					end
-				end
-			elseif existing == nil then
-				out[renamed] = value
-			end
-		end
+		out[if type(key) == "string" then LegacyIds.receipt(key) else key] = value
 	end
 	return out
 end
@@ -96,16 +77,56 @@ Migrations.STEPS = table.freeze({
 			local cants = raw.cants
 			if type(cants) == "table" then
 				if type(cants.unlocked) == "table" then
-					cants.unlocked = renameKeys(cants.unlocked)
+					cants.unlocked = renameKeys(cants.unlocked, LegacyIds.CANT)
 				end
 				if type(cants.verses) == "table" then
-					cants.verses = renameKeys(cants.verses)
+					cants.verses = renameKeys(cants.verses, LegacyIds.CANT)
 				end
 				if type(cants.equipped) == "string" then
 					cants.equipped = Migrations.LEGACY_CANT_IDS[cants.equipped] or cants.equipped
 				end
 			end
 			raw.schemaVersion = 3
+			return raw
+		end,
+	},
+	-- v3 -> v4: Waymark I is `waymark.branded` (approved 2026-11-16). The
+	-- rename reaches Waymark progress and every receipt that names the
+	-- Waymark as its source: permanent and seasonal receipts, and pending
+	-- intents (key, grantId and sourceId). Archive records are not part of
+	-- the profile; they are translated when read (LegacyIds.receipt).
+	{
+		from = 3,
+		to = 4,
+		apply = function(raw: Raw): Raw
+			if type(raw.waymarks) == "table" then
+				raw.waymarks = renameKeys(raw.waymarks, LegacyIds.WAYMARK)
+			end
+			local receipts = raw.receipts
+			if type(receipts) == "table" then
+				if type(receipts.permanent) == "table" then
+					receipts.permanent = renameReceiptKeys(receipts.permanent)
+				end
+				if type(receipts.seasonal) == "table" then
+					receipts.seasonal = renameReceiptKeys(receipts.seasonal)
+				end
+				if type(receipts.pending) == "table" then
+					local pending = renameReceiptKeys(receipts.pending)
+					for _, intent in pending do
+						if type(intent) == "table" then
+							if type(intent.grantId) == "string" then
+								intent.grantId = LegacyIds.receipt(intent.grantId)
+							end
+							if type(intent.sourceId) == "string" then
+								intent.sourceId = LegacyIds.WAYMARK[intent.sourceId]
+									or intent.sourceId
+							end
+						end
+					end
+					receipts.pending = pending
+				end
+			end
+			raw.schemaVersion = 4
 			return raw
 		end,
 	},

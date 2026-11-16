@@ -35,7 +35,7 @@ local CATALOG = RewardCatalog.build({
 		sources = { "waymark" },
 		grants = {
 			cants = { "cant.nearness" },
-			waymarks = { "waymark-i" },
+			waymarks = { "waymark.branded" },
 			instances = { "item-test-blade" },
 		},
 	},
@@ -91,7 +91,7 @@ end
 suite:case("a permanent grant applies once and writes its receipt atomically", function(env)
 	local s = server(env, "job-a")
 	local receiptId =
-		RewardCatalog.permanentReceiptId("waymark", "waymark-i", "reward-nearness") :: string
+		RewardCatalog.permanentReceiptId("waymark", "waymark.branded", "reward-nearness") :: string
 	local mutation =
 		Receipts.permanentGrant(receiptId, def("reward-nearness")) :: SaveQueue.Mutation
 	s.queue:enqueue(KEY, mutation)
@@ -99,7 +99,7 @@ suite:case("a permanent grant applies once and writes its receipt atomically", f
 	local p = stored(env)
 	Assert.equal(p.receipts.permanent[receiptId], true, "receipt")
 	Assert.equal(p.cants.unlocked["cant.nearness"], true, "cant unlocked")
-	Assert.equal(p.waymarks["waymark-i"].activated, true, "waymark activated")
+	Assert.equal(p.waymarks["waymark.branded"].activated, true, "waymark activated")
 	Assert.count(p.inventory, 1, "instance granted")
 	Assert.isTrue(
 		string.match(p.inventory[1].instanceId, "^i%-%x+%-1$") ~= nil,
@@ -264,11 +264,14 @@ suite:case(
 	"intents are recorded durably, survive a crash, and are cleared by the grant",
 	function(env)
 		local a = server(env, "job-a")
-		local grantId =
-			RewardCatalog.permanentReceiptId("waymark", "waymark-i", "reward-nearness") :: string
+		local grantId = RewardCatalog.permanentReceiptId(
+			"waymark",
+			"waymark.branded",
+			"reward-nearness"
+		) :: string
 		local intent = Receipts.recordIntent(
 			grantId,
-			"waymark-i",
+			"waymark.branded",
 			"reward-nearness",
 			env.clock:wallTime()
 		) :: SaveQueue.Mutation
@@ -297,7 +300,7 @@ suite:case(
 		-- Recording the intent again after fulfilment is a no-op.
 		b.queue:enqueue(
 			KEY,
-			Receipts.recordIntent(grantId, "waymark-i", "reward-nearness", 0) :: SaveQueue.Mutation
+			Receipts.recordIntent(grantId, "waymark.branded", "reward-nearness", 0) :: SaveQueue.Mutation
 		)
 		Assert.equal(b.queue:flush(KEY), "committed", "no-op")
 		Assert.isNil(stored(env).receipts.pending[grantId], "not re-recorded")

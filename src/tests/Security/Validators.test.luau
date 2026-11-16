@@ -153,7 +153,7 @@ suite:case("Schema kinds behave at their boundaries", function()
 		return copy
 	end
 	expectReject(validate, mutate("region", "cant.invented"), "not a known cant")
-	expectReject(validate, mutate("region", "waymark-i"), "not a known cant")
+	expectReject(validate, mutate("region", "waymark.branded"), "not a known cant")
 	expectReject(validate, mutate("count", 11), "count is not an integer")
 	expectReject(validate, mutate("count", -1), "count is not an integer")
 	expectReject(validate, mutate("ratio", 1.01), "ratio is not a number")

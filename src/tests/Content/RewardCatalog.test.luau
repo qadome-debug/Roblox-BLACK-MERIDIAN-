@@ -111,13 +111,13 @@ suite:case("arbitrary and malformed definitions are rejected", function()
 end)
 
 suite:case("receipt ids are deterministic, distinct and bounded", function()
-	local a = RewardCatalog.permanentReceiptId("waymark", "waymark-i", "reward-test-nearness")
-	local b = RewardCatalog.permanentReceiptId("waymark", "waymark-i", "reward-test-nearness")
+	local a = RewardCatalog.permanentReceiptId("waymark", "waymark.branded", "reward-test-nearness")
+	local b = RewardCatalog.permanentReceiptId("waymark", "waymark.branded", "reward-test-nearness")
 	Assert.equal(a, b, "same inputs, same id")
-	Assert.equal(a, "p:waymark:waymark-i:reward-test-nearness", "format")
+	Assert.equal(a, "p:waymark:waymark.branded:reward-test-nearness", "format")
 	Assert.notEqual(
 		a,
-		RewardCatalog.permanentReceiptId("quest", "waymark-i", "reward-test-nearness"),
+		RewardCatalog.permanentReceiptId("quest", "waymark.branded", "reward-test-nearness"),
 		"source kind matters"
 	)
 	Assert.notEqual(

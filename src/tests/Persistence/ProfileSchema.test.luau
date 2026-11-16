@@ -26,7 +26,7 @@ local function rich(): any
 	profile.cants.unlocked["cant.nearness"] = true
 	profile.cants.equipped = "cant.nearness"
 	profile.cants.verses["cant.nearness"] = {}
-	profile.waymarks["waymark-i"] = { activated = true, rank = 1 }
+	profile.waymarks["waymark.branded"] = { activated = true, rank = 1 }
 	profile.inventory = {
 		{ itemId = "item-test-ore", quantity = 5 },
 		{ itemId = "item-test-blade", quantity = 1, instanceId = "inst-1" },
@@ -78,7 +78,7 @@ suite:case("top-level shape and version", function()
 	expectError(p, "unexpected field extra")
 	p = rich()
 	p.schemaVersion = 99
-	expectError(p, "schemaVersion: expected 3")
+	expectError(p, "schemaVersion: expected 4")
 	p = rich()
 	p.revision = -1
 	expectError(p, "revision: must be a nonnegative integer")
@@ -116,8 +116,8 @@ suite:case("unknown canonical ids are rejected everywhere", function()
 	p.quests.completed["quest-nope"] = true
 	expectError(p, "unknown quest id quest-nope")
 	p = rich()
-	p.burdens.discovered["burden-nope"] = true
-	expectError(p, "unknown burden id burden-nope")
+	p.burdens.discovered["burden.nope"] = true
+	expectError(p, "unknown burden id burden.nope")
 	p = rich()
 	p.cants.verses["cant.nearness"]["none.nope"] = true
 	expectError(p, "unknown verse id none.nope")
@@ -132,7 +132,7 @@ suite:case("cant consistency", function()
 	p.cants.unlocked = {}
 	expectError(p, "equipped cant is not unlocked")
 	p = rich()
-	p.cants.equipped = "waymark-i"
+	p.cants.equipped = "waymark.branded"
 	expectError(p, "cants.equipped: unknown cant id")
 	p = rich()
 	p.cants.unlocked["cant.nearness"] = false
@@ -147,7 +147,7 @@ suite:case("burden rules", function()
 	p.burdens.dissonance = 0 / 0
 	expectError(p, "dissonance: must be a number")
 	p = rich()
-	p.burdens.active = { "burden-nope" }
+	p.burdens.active = { "burden.nope" }
 	expectError(p, "unknown burden id")
 	p = rich()
 	p.burdens.active = { a = 1 }

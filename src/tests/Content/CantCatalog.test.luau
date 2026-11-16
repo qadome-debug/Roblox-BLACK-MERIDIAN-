@@ -21,10 +21,10 @@ local function registry(): ContentRegistry.Registry
 		},
 		regions = {
 			{
-				id = "region-ta",
+				id = "region.ta",
 				name = "Test Region",
 				launchRequired = true,
-				waymarkIds = { "waymark-ta1" },
+				waymarkIds = { "waymark.ta1" },
 				travelLinkIds = {},
 			},
 		},
@@ -34,7 +34,7 @@ local function registry(): ContentRegistry.Registry
 				name = "Test Quest",
 				launchRequired = true,
 				chapterId = "chapter-t1",
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		cants = {
@@ -73,11 +73,11 @@ local function registry(): ContentRegistry.Registry
 		burdens = {},
 		waymarks = {
 			{
-				id = "waymark-ta1",
+				id = "waymark.ta1",
 				name = "Test Waymark",
 				launchRequired = true,
 				rank = 1,
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		bosses = {},
@@ -97,7 +97,7 @@ local function defs(): { any }
 		},
 		{
 			id = "cant.tb",
-			unlock = { kind = "waymark", waymarkId = "waymark-ta1" },
+			unlock = { kind = "waymark", waymarkId = "waymark.ta1" },
 			slots = { "secondary" },
 			exclusiveWith = { "cant.tc" },
 			verseIds = {},
@@ -155,7 +155,7 @@ suite:case("the production catalog covers every canonical Cant", function()
 	-- holding the Waymark does not unlock the Cant, and nothing but a grant
 	-- recorded in the profile does.
 	Assert.isFalse(catalog:isUnlocked("cant.nearness", NONE), "not owned at creation")
-	local withWaymark = { waymarks = { ["waymark-i"] = true }, quests = {} }
+	local withWaymark = { waymarks = { ["waymark.branded"] = true }, quests = {} }
 	Assert.isFalse(
 		catalog:isUnlocked("cant.nearness", withWaymark :: any),
 		"Waymark I does not unlock Nearness"
@@ -257,7 +257,7 @@ end)
 suite:case("unlock rules read only server facts", function()
 	local catalog = CantCatalog.build(defs() :: any, registry())
 	Assert.deepEqual(catalog:unlocked(NONE), { "cant.ta" }, "starter only")
-	local facts: CantCatalog.Facts = { waymarks = { ["waymark-ta1"] = true }, quests = {} }
+	local facts: CantCatalog.Facts = { waymarks = { ["waymark.ta1"] = true }, quests = {} }
 	Assert.deepEqual(catalog:unlocked(facts), { "cant.ta", "cant.tb" }, "waymark unlocks B")
 	facts.quests["quest-t1"] = true
 	Assert.isTrue(catalog:isUnlocked("cant.tc", facts), "quest unlocks C")
@@ -267,7 +267,7 @@ end)
 suite:case("loadouts respect slots, unlocks, duplicates and exclusions", function()
 	local catalog = CantCatalog.build(defs() :: any, registry())
 	local all: CantCatalog.Facts =
-		{ waymarks = { ["waymark-ta1"] = true }, quests = { ["quest-t1"] = true } }
+		{ waymarks = { ["waymark.ta1"] = true }, quests = { ["quest-t1"] = true } }
 	local function check(loadout: any, facts: CantCatalog.Facts): string?
 		local ok, reason = catalog:checkLoadout(loadout, facts)
 		return if ok then nil else reason

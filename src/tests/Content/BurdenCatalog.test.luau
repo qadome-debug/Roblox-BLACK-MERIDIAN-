@@ -15,12 +15,12 @@ local Suite = require(ServerStorage.Tests.Support.Suite)
 
 local suite = Suite.new("BurdenCatalog")
 
--- Fixture registry: burden-ta and burden-tb belong to cant.ta, burden-tc
+-- Fixture registry: burden.ta and burden.tb belong to cant.ta, burden.tc
 -- belongs to cant.tc.
 local function defs(): { any }
 	return {
 		{
-			id = "burden-ta",
+			id = "burden.ta",
 			cantId = "cant.ta",
 			role = "default",
 			effect = "test_pressure",
@@ -28,13 +28,13 @@ local function defs(): { any }
 			mechanics = "canonical",
 		},
 		{
-			id = "burden-tb",
+			id = "burden.tb",
 			cantId = "cant.ta",
 			role = "mastery",
 			mechanics = "provisional",
 		},
 		{
-			id = "burden-tc",
+			id = "burden.tc",
 			cantId = "cant.tc",
 			role = "default",
 			mechanics = "provisional",
@@ -56,13 +56,13 @@ end)
 
 suite:case("only canonical Burden IDs are accepted", function()
 	local catalog = BurdenCatalog.build(defs(), ContentFixtures.registry())
-	Assert.equal(catalog:resolve("burden-ta"), "burden-ta", "known")
-	for _, value: any in { "burden-invented", "cant.ta", "", 7, {}, true } :: { any } do
+	Assert.equal(catalog:resolve("burden.ta"), "burden.ta", "known")
+	for _, value: any in { "burden.invented", "cant.ta", "", 7, {}, true } :: { any } do
 		Assert.isNil(catalog:resolve(value), "rejected " .. tostring(value))
 	end
 	Assert.contains(
 		problemsWith(function(list)
-			list[1].id = "burden-invented"
+			list[1].id = "burden.invented"
 		end),
 		"not a canonical Burden ID",
 		"fabricated"
@@ -71,7 +71,7 @@ suite:case("only canonical Burden IDs are accepted", function()
 		problemsWith(function(list)
 			table.remove(list, 3)
 		end),
-		"burden-tc: canonical Burden has no definition",
+		"burden.tc: canonical Burden has no definition",
 		"missing"
 	)
 	Assert.contains(
@@ -88,14 +88,14 @@ suite:case("a Burden is bound to its Cant and has one role", function()
 		problemsWith(function(list)
 			list[1].cantId = "cant.tc"
 		end),
-		"burden-ta: cantId must be cant.ta (registry)",
+		"burden.ta: cantId must be cant.ta (registry)",
 		"wrong Cant"
 	)
 	Assert.contains(
 		problemsWith(function(list)
 			list[2].role = "default"
 		end),
-		"cant.ta already has the default Burden burden-ta",
+		"cant.ta already has the default Burden burden.ta",
 		"two defaults"
 	)
 	Assert.contains(
@@ -178,39 +178,39 @@ suite:case("effects are names and parameters are bounded numbers", function()
 		"too many params"
 	)
 	Assert.throws(function()
-		BurdenCatalog.build({ { id = "burden-invented" } } :: any, ContentFixtures.registry())
+		BurdenCatalog.build({ { id = "burden.invented" } } :: any, ContentFixtures.registry())
 	end, "definitions are invalid", "build refuses")
 end)
 
 suite:case("the Burden in force comes from the equipped Cant", function()
 	local catalog = BurdenCatalog.build(defs(), ContentFixtures.registry())
 	local forA = catalog:forCant("cant.ta")
-	Assert.equal(forA.default, "burden-ta", "default of cant.ta")
-	Assert.deepEqual(forA.mastery, { "burden-tb" }, "mastery of cant.ta")
+	Assert.equal(forA.default, "burden.ta", "default of cant.ta")
+	Assert.deepEqual(forA.mastery, { "burden.tb" }, "mastery of cant.ta")
 	Assert.isNil(catalog:forCant("cant.tb").default, "a Cant without Burdens")
-	Assert.isTrue(catalog:belongsTo("burden-tb", "cant.ta"), "belongs")
-	Assert.isFalse(catalog:belongsTo("burden-tc", "cant.ta"), "another Cant's Burden")
+	Assert.isTrue(catalog:belongsTo("burden.tb", "cant.ta"), "belongs")
+	Assert.isFalse(catalog:belongsTo("burden.tc", "cant.ta"), "another Cant's Burden")
 
-	Assert.equal(catalog:activeFor("cant.ta", nil, false), "burden-ta", "default applies")
+	Assert.equal(catalog:activeFor("cant.ta", nil, false), "burden.ta", "default applies")
 	Assert.equal(
-		catalog:activeFor("cant.ta", "burden-tb", false),
-		"burden-ta",
+		catalog:activeFor("cant.ta", "burden.tb", false),
+		"burden.ta",
 		"a mastery choice without mastery falls back to the default"
 	)
-	Assert.equal(catalog:activeFor("cant.ta", "burden-tb", true), "burden-tb", "mastery choice")
+	Assert.equal(catalog:activeFor("cant.ta", "burden.tb", true), "burden.tb", "mastery choice")
 	Assert.equal(
-		catalog:activeFor("cant.ta", "burden-tc", true),
-		"burden-ta",
+		catalog:activeFor("cant.ta", "burden.tc", true),
+		"burden.ta",
 		"another Cant's Burden is never in force"
 	)
 	Assert.equal(
-		catalog:activeFor("cant.ta", "burden-ta", true),
-		"burden-ta",
+		catalog:activeFor("cant.ta", "burden.ta", true),
+		"burden.ta",
 		"choosing the default is the default"
 	)
-	Assert.equal(catalog:activeFor("cant.tc", nil, true), "burden-tc", "other Cant")
+	Assert.equal(catalog:activeFor("cant.tc", nil, true), "burden.tc", "other Cant")
 	Assert.isNil(catalog:activeFor("cant.tb", nil, true), "no Burden defined")
-	Assert.isNil(catalog:activeFor("cant.invented", "burden-ta", true), "unknown Cant")
+	Assert.isNil(catalog:activeFor("cant.invented", "burden.ta", true), "unknown Cant")
 end)
 
 return suite:cases()

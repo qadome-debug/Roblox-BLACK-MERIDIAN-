@@ -21,10 +21,10 @@ local function registry(): ContentRegistry.Registry
 		},
 		regions = {
 			{
-				id = "region-ta",
+				id = "region.ta",
 				name = "Test Region",
 				launchRequired = true,
-				waymarkIds = { "waymark-ta1" },
+				waymarkIds = { "waymark.ta1" },
 				travelLinkIds = {},
 			},
 		},
@@ -34,7 +34,7 @@ local function registry(): ContentRegistry.Registry
 				name = "Test Quest",
 				launchRequired = true,
 				chapterId = "chapter-t1",
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		cants = {
@@ -73,11 +73,11 @@ local function registry(): ContentRegistry.Registry
 		burdens = {},
 		waymarks = {
 			{
-				id = "waymark-ta1",
+				id = "waymark.ta1",
 				name = "Test Waymark",
 				launchRequired = true,
 				rank = 1,
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		bosses = {},
@@ -103,7 +103,7 @@ local function defs(): { any }
 			costs = { { pool = "stamina", amount = 30 }, { pool = "posture", amount = 10 } },
 			castSeconds = 12 / 30,
 			cooldownSeconds = 90 / 30,
-			prerequisites = { verseIds = { "ta.v1" }, waymarkId = "waymark-ta1" },
+			prerequisites = { verseIds = { "ta.v1" }, waymarkId = "waymark.ta1" },
 			mechanics = "provisional",
 		},
 		{
@@ -245,7 +245,7 @@ suite:case("prerequisites read only server facts", function()
 	Assert.isFalse(catalog:prerequisitesMet("ta.v2", facts), "needs verse and waymark")
 	facts.verses["ta.v1"] = true
 	Assert.isFalse(catalog:prerequisitesMet("ta.v2", facts), "still needs the waymark")
-	facts.waymarks["waymark-ta1"] = true
+	facts.waymarks["waymark.ta1"] = true
 	Assert.isTrue(catalog:prerequisitesMet("ta.v2", facts), "met")
 	Assert.isFalse(catalog:prerequisitesMet("tc.v1", facts), "needs quest")
 	Assert.isFalse(catalog:prerequisitesMet("none.fake", facts), "unknown")

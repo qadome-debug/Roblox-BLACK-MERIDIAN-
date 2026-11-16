@@ -18,10 +18,10 @@ function ContentFixtures.registry(): ContentRegistry.Registry
 		},
 		regions = {
 			{
-				id = "region-ta",
+				id = "region.ta",
 				name = "Test Region",
 				launchRequired = true,
-				waymarkIds = { "waymark-ta1" },
+				waymarkIds = { "waymark.ta1" },
 				travelLinkIds = {},
 			},
 		},
@@ -31,7 +31,7 @@ function ContentFixtures.registry(): ContentRegistry.Registry
 				name = "Test Quest",
 				launchRequired = true,
 				chapterId = "chapter-t1",
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		cants = {
@@ -69,19 +69,19 @@ function ContentFixtures.registry(): ContentRegistry.Registry
 		},
 		burdens = {
 			{
-				id = "burden-ta",
+				id = "burden.ta",
 				name = "Test Burden A",
 				launchRequired = true,
 				cantId = "cant.ta",
 			},
 			{
-				id = "burden-tb",
+				id = "burden.tb",
 				name = "Test Burden B",
 				launchRequired = true,
 				cantId = "cant.ta",
 			},
 			{
-				id = "burden-tc",
+				id = "burden.tc",
 				name = "Test Burden C",
 				launchRequired = false,
 				cantId = "cant.tc",
@@ -89,11 +89,11 @@ function ContentFixtures.registry(): ContentRegistry.Registry
 		},
 		waymarks = {
 			{
-				id = "waymark-ta1",
+				id = "waymark.ta1",
 				name = "Test Waymark",
 				launchRequired = true,
 				rank = 1,
-				regionId = "region-ta",
+				regionId = "region.ta",
 			},
 		},
 		bosses = {},
@@ -113,7 +113,7 @@ function ContentFixtures.cantDefs(): { any }
 		},
 		{
 			id = "cant.tb",
-			unlock = { kind = "waymark", waymarkId = "waymark-ta1" },
+			unlock = { kind = "waymark", waymarkId = "waymark.ta1" },
 			slots = { "secondary" },
 			exclusiveWith = { "cant.tc" },
 			verseIds = {},
@@ -148,7 +148,7 @@ function ContentFixtures.verseDefs(): { any }
 			costs = { { pool = "stamina", amount = 30 }, { pool = "posture", amount = 10 } },
 			castSeconds = 12 / 30,
 			cooldownSeconds = 90 / 30,
-			prerequisites = { verseIds = { "ta.v1" }, waymarkId = "waymark-ta1" },
+			prerequisites = { verseIds = { "ta.v1" }, waymarkId = "waymark.ta1" },
 			mechanics = "provisional",
 		},
 		{

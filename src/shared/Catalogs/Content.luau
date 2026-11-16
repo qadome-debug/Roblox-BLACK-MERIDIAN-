@@ -18,7 +18,16 @@ local ContentRegistry = require(script.Parent.ContentRegistry)
 local Content: ContentRegistry.ContentData = {
 	chapters = {},
 
-	regions = {},
+	-- Ash Quay is the first region.
+	regions = {
+		{
+			id = "region.ash_quay",
+			name = "Ash Quay",
+			launchRequired = true,
+			waymarkIds = {},
+			travelLinkIds = {},
+		},
+	},
 
 	quests = {},
 
@@ -91,14 +100,26 @@ local Content: ContentRegistry.ContentData = {
 		},
 	},
 
-	-- Unwanted Company and Long Way Home are established Nearness Burdens.
-	-- They are registered when their machine IDs are approved.
-	burdens = {},
+	-- Nearness's default Burden and its alternate mastery Burden.
+	burdens = {
+		{
+			id = "burden.unwanted_company",
+			name = "Unwanted Company",
+			launchRequired = true,
+			cantId = "cant.nearness",
+		},
+		{
+			id = "burden.long_way_home",
+			name = "Long Way Home",
+			launchRequired = true,
+			cantId = "cant.nearness",
+		},
+	},
 
 	waymarks = {
 		{
-			-- Legacy-style ID kept until the report's ID is approved.
-			id = "waymark-i",
+			-- Renamed from `waymark-i` (schema v4 migration).
+			id = "waymark.branded",
 			name = "Waymark I — Branded",
 			launchRequired = true,
 			rank = 1,
@@ -107,9 +128,26 @@ local Content: ContentRegistry.ContentData = {
 		},
 	},
 
-	bosses = {},
+	-- Lantern Maw is the first boss. Its location is the first Descent;
+	-- the schema requires one and the design says the first boss belongs
+	-- to the first Descent (docs/id-proposals.md notes this inference).
+	bosses = {
+		{
+			id = "boss.lantern_maw",
+			name = "Lantern Maw",
+			launchRequired = true,
+			locationId = "descent.lantern_vault",
+		},
+	},
 
-	descents = {},
+	-- Lantern Vault is the first Descent.
+	descents = {
+		{
+			id = "descent.lantern_vault",
+			name = "Lantern Vault",
+			launchRequired = true,
+		},
+	},
 }
 
 return Content
