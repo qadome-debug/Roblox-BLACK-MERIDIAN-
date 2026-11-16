@@ -67,7 +67,11 @@ function ContentFixtures.registry(): ContentRegistry.Registry
 				cantId = "cant-tc",
 			},
 		},
-		burdens = {},
+		burdens = {
+			{ id = "burden-ta", name = "Test Burden A", launchRequired = true },
+			{ id = "burden-tb", name = "Test Burden B", launchRequired = true },
+			{ id = "burden-tc", name = "Test Burden C", launchRequired = false },
+		},
 		waymarks = {
 			{
 				id = "waymark-ta1",
