@@ -68,14 +68,15 @@ when its code compiled.
 | BM-058 | Done   | 2026-11-15 | `Combat/Ai`: per-enemy brain Idle→Chase→Attack→Return with aggro range, injectable navigator (straight-line default), repath interval, path-failure budget, leash, home reset (full resources), attack scheduling with cooldown + seeded jitter, all through the sim intent API; loot ownership tallied from server-resolved damage (8 tests) |
 | BM-059 | Done   | 2026-11-15 | `Combat/Targeting`: server-granted lock-on (exists, alive, hostile, in range, in sight), nearest-first `cycle`, per-step re-validation with grace period, drops on death/removal/clear, engagement from server-resolved damage with timeout, `engage` for other systems; hits never consult the lock (6 tests) |
 | BM-060 | Done   | 2026-11-15 | `Contracts/CombatReplication` (public view: state/phase/actionId/health fraction; own view adds exact resources, lock, engagement, `ackSequence`), `Combat/Replication` (change tracking, incremental deltas, full resync after the history window or a future revision, bounded public cues, private rejections only to the owner), `Services/CombatService` (owns the stack, player↔combatant mapping, server-sampled poses, per-step hooks, replication through injected remotes), client `CombatState` (applies deltas/cues, prediction reconciled by the ack) (4 + 3 tests) |
-| BM-061 | Done   | 2026-11-15 | `CombatInput` contract (kinds Attack/Dodge/Guard/Parry/Release/Lock/Unlock/CycleTarget, bounded sequence, optional opaque target), strict validator, adapter forwarding to CombatService (NOT_READY without a combatant, REJECTED with the simulation.s fixed reason); Bootstrap stage 3 wires CharacterService (Roblox rig adapter) and CombatService (remote sender, server-sampled poses, heartbeat tick, join/leave); security tests: malformed payloads, stale sequences, spam vs the combat rate class, forged targets, no combatant (6 tests) |
+| BM-061 | Done   | 2026-11-15 | `CombatInput` contract (kinds Attack/Dodge/Guard/Parry/Release/Lock/Unlock/CycleTarget, bounded sequence, optional opaque target), strict validator, adapter forwarding to CombatService (NOT_READY without a combatant, REJECTED with the simulation's fixed reason); Bootstrap stage 3 wires CharacterService (Roblox rig adapter) and CombatService (remote sender, server-sampled poses, heartbeat tick, join/leave); security tests: malformed payloads, stale sequences, spam vs the combat rate class, forged targets, no combatant (6 tests) |
+| BM-062 | Done   | 2026-11-15 | Server `CantCatalog`: typed definitions (unlock rule starter/waymark/quest, legal slots primary/secondary, symmetric exclusions, compatible Verse IDs, mechanics canonical/provisional), validated against the canonical registry (no fabricated or missing Cants, Verse lists must match, unlock refs canonical, starter flag consistent); `resolve`, `isUnlocked` from server facts, `canSlot`, `isVerseCompatible`, `checkLoadout`; production catalog defines Nearness only, mechanics provisional pending the design inventory (10 tests) |
 
 ## Blockers
 
 - **Branch protection (BM-010).** Needs the repository owner to require the
   `checks` status on `main` in GitHub settings; steps in `docs/ci.md`. The
-  workflow itself has not yet run on GitHub because the repository has not
-  been pushed from this machine.
+  workflow runs on every push; Rokit is authenticated with the run's
+  read-only token so tool downloads are not rate limited.
 
 - **Canonical content inventory.** The established list of Orthea regions,
   quests, Cants, Verses, Burdens, Waymarks, bosses, and Descents is not in

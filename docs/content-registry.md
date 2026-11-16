@@ -61,6 +61,15 @@ Everything else waits on the canonical content inventory (see
 the tests in `src/tests/Content/ContentRegistry.test.luau` keep running
 against the real data.
 
+## Cant definitions (BM-062)
+
+Gameplay rules for Cants live in `src/server/Content/CantCatalog.luau`:
+unlock rule, legal loadout slots, exclusions and compatible Verses. The
+catalog is validated against this registry, so every canonical Cant has
+exactly one definition and no definition can name an unknown Cant. Its
+`mechanics` field stays `provisional` until the design inventory supplies
+the Cant's values.
+
 ## Tests
 
 `lune run tools/run-tests.luau --filter ContentRegistry` runs fixtures for
