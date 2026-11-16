@@ -161,4 +161,33 @@ suite:case(
 	end
 )
 
+suite:case("an equipped Cant activates on the server and its cue reaches everyone", function(env)
+	local h = harness(env)
+	h.poses[1] = { position = pos(0, 0, 0), facing = pos(0, 0, -1) }
+	h.poses[2] = { position = pos(4, 0, 0), facing = pos(0, 0, -1) }
+	h.service:addPlayer(1)
+	h.service:addPlayer(2)
+	local id = h.service:combatantId(1)
+	Assert.isTrue(h.service.cants:equip(id, "cant-nearness").ok, "equip Nearness")
+	Assert.isFalse(h.service.cants:equip(id, "cant-invented").ok, "fabricated Cant refused")
+	Assert.isTrue(h.service.cants:activate(id).ok, "activate")
+	Assert.isFalse(h.service.cants:activate(id).ok, "cooldown")
+	for _ = 1, 3 do
+		h.service:tick(1 / 30)
+	end
+	local seen = false
+	for _, batch in sentTo(h, 2, "CombatCue") do
+		for _, cue in batch.cues do
+			if cue.kind == "cant_activated" and cue.id == id then
+				Assert.equal(cue.data.cantId, "cant-nearness", "cant id replicated")
+				Assert.isNil(cue.data.provisional, "internal flags are not replicated")
+				seen = true
+			end
+		end
+	end
+	Assert.isTrue(seen, "the other player saw the activation")
+	h.service:removePlayer(1)
+	Assert.isNil(h.service.cants:equipped(id), "forgotten on leave")
+end)
+
 return suite:cases()

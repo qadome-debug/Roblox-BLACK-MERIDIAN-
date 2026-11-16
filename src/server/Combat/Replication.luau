@@ -68,6 +68,7 @@ local PUBLIC_CUES: { [string]: { string } } = {
 	combatant_removed = {},
 	target_acquired = { "target" },
 	target_lost = { "reason" },
+	cant_activated = { "cantId" },
 }
 
 -- Event kinds only the combatant itself may see.

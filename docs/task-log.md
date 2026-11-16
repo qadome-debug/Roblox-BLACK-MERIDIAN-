@@ -70,6 +70,7 @@ when its code compiled.
 | BM-060 | Done   | 2026-11-15 | `Contracts/CombatReplication` (public view: state/phase/actionId/health fraction; own view adds exact resources, lock, engagement, `ackSequence`), `Combat/Replication` (change tracking, incremental deltas, full resync after the history window or a future revision, bounded public cues, private rejections only to the owner), `Services/CombatService` (owns the stack, player↔combatant mapping, server-sampled poses, per-step hooks, replication through injected remotes), client `CombatState` (applies deltas/cues, prediction reconciled by the ack) (4 + 3 tests) |
 | BM-061 | Done   | 2026-11-15 | `CombatInput` contract (kinds Attack/Dodge/Guard/Parry/Release/Lock/Unlock/CycleTarget, bounded sequence, optional opaque target), strict validator, adapter forwarding to CombatService (NOT_READY without a combatant, REJECTED with the simulation's fixed reason); Bootstrap stage 3 wires CharacterService (Roblox rig adapter) and CombatService (remote sender, server-sampled poses, heartbeat tick, join/leave); security tests: malformed payloads, stale sequences, spam vs the combat rate class, forged targets, no combatant (6 tests) |
 | BM-062 | Done   | 2026-11-15 | Server `CantCatalog`: typed definitions (unlock rule starter/waymark/quest, legal slots primary/secondary, symmetric exclusions, compatible Verse IDs, mechanics canonical/provisional), validated against the canonical registry (no fabricated or missing Cants, Verse lists must match, unlock refs canonical, starter flag consistent); `resolve`, `isUnlocked` from server facts, `canSlot`, `isVerseCompatible`, `checkLoadout`; production catalog defines Nearness only, mechanics provisional pending the design inventory (10 tests) |
+| BM-063 | Partial | 2026-11-15 | Server Cant activation layer in the combat simulation: equip (server-owned, catalog-checked, not mid-action), activate gated by equipped Cant, alive, allowed combat state, step-counted cooldown that survives swapping, atomic resource cost; validated kits; `cant_activated` public cue; wired into CombatService (`service.cants`, forgotten on leave). Nearness kit is provisional: placeholder numbers and an effect that only announces activation, because its canonical mechanics are not in the repository (8 tests). Blocked: Nearness mechanics |
 
 ## Blockers
 
@@ -82,5 +83,8 @@ when its code compiled.
   quests, Cants, Verses, Burdens, Waymarks, bosses, and Descents is not in
   the repository. Tasks that need real IDs use only the known first-slice
   items (the Nearness Cant, Waymark I) and leave the rest for the inventory.
+- **Nearness mechanics (BM-063, BM-066).** The established Nearness
+  effect, cooldown, cost and usable states are needed to replace the
+  provisional kit in `src/server/Combat/Cants.luau`.
 - **Original 96-task register.** Not available; the 136-task plan is used
   as-is.

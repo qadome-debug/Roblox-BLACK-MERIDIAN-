@@ -14,6 +14,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ActionMachine = require(script.Parent.Parent.Combat.ActionMachine)
 local Ai = require(script.Parent.Parent.Combat.Ai)
 local Attributes = require(script.Parent.Parent.Combat.Attributes)
+local CantCatalog = require(script.Parent.Parent.Content.CantCatalog)
+local Cants = require(script.Parent.Parent.Combat.Cants)
 local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
 local CombatReplication = require(ReplicatedStorage.Shared.Contracts.CombatReplication)
 local Damage = require(script.Parent.Parent.Combat.Damage)
@@ -47,6 +49,9 @@ export type Deps = {
 	stepSeconds: number?,
 	-- Seconds between replication pushes (default 1/20).
 	replicateInterval: number?,
+	-- Cant kits by Cant ID (default Cants.PRODUCTION_KITS). Every kit must
+	-- name a Cant in the production catalog.
+	cantKits: { [string]: Cants.Kit }?,
 }
 
 export type PlayerSpec = {
@@ -85,6 +90,7 @@ export type Service = {
 	sim: Simulation.Simulation,
 	targeting: Targeting.Targeting,
 	ai: Ai.Ai,
+	cants: Cants.Layer,
 }
 
 local CombatService = {}
@@ -117,6 +123,13 @@ function CombatService.new(deps: Deps): Service
 	local targeting = Targeting.attach(sim, { lineOfSight = deps.lineOfSight, damage = damage })
 	local ai = Ai.attach(sim, { logger = deps.logger, navigator = deps.navigator, damage = damage })
 	local replication = Replication.new(sim, { targeting = targeting })
+	local catalog = CantCatalog.production()
+	local cants = Cants.attach(sim, {
+		kits = deps.cantKits or Cants.PRODUCTION_KITS,
+		resolve = function(value)
+			return catalog:resolve(value)
+		end,
+	})
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL
 	sim:onStep(function()
 		ai:tick()
@@ -132,6 +145,7 @@ function CombatService.new(deps: Deps): Service
 	service.sim = sim
 	service.targeting = targeting
 	service.ai = ai
+	service.cants = cants
 
 	local function log(
 		level: Logger.Level,
@@ -178,6 +192,7 @@ function CombatService.new(deps: Deps): Service
 		end
 		players[userId] = nil
 		lastRevisionSent[userId] = nil
+		cants:forget(playerId(userId))
 		sim:removeCombatant(playerId(userId))
 		replication:forgetViewer(playerId(userId))
 		log("debug", "combat_player_removed", userId)
