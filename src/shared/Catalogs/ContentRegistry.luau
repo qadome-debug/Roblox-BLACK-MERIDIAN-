@@ -6,9 +6,24 @@
 -- here, in data checked into the repository; nothing at runtime, and nothing
 -- from a client, can add one.
 --
--- ID rules: lowercase ASCII letters, digits and hyphens; starts with the
--- category prefix (for example `cant-`); at most Limits.MAX_CANONICAL_ID_BYTES
--- bytes; unique across every category.
+-- ID rules. An ID is lowercase ASCII letters, digits, dots, underscores and
+-- hyphens; starts and ends with a letter or digit; never has two dots in a
+-- row; is at most Limits.MAX_CANONICAL_ID_BYTES bytes; and is unique across
+-- every category.
+--
+-- Two styles are accepted, because the design has fixed the machine IDs of
+-- some categories and not yet of others:
+--
+--   * Report style (approved 2026-11-16, from the 22-part design report):
+--     Cants are `cant.<name>` (`cant.nearness`). A Verse is
+--     `<namespace>.<name>` (`near.close_step`), where the namespace belongs
+--     to its Cant: every Verse of one Cant shares it, and no two Cants
+--     share one.
+--   * Legacy style, a category prefix and hyphens (`waymark-i`): still used
+--     by the categories whose machine IDs the report has not defined. They
+--     move to the report style when their IDs are approved; see
+--     docs/id-proposals.md. An ID is never renamed in saved data without a
+--     migration.
 
 local Limits = require(script.Parent.Parent.Constants.Limits)
 
@@ -46,7 +61,7 @@ export type CantEntry = {
 	verseIds: { string },
 }
 export type VerseEntry = { id: string, name: string, launchRequired: boolean, cantId: string }
-export type BurdenEntry = { id: string, name: string, launchRequired: boolean }
+export type BurdenEntry = { id: string, name: string, launchRequired: boolean, cantId: string }
 export type WaymarkEntry = {
 	id: string,
 	name: string,
@@ -95,7 +110,14 @@ export type Registry = {
 
 type FieldKind = "string" | "boolean" | "positiveInteger" | "id" | "idList"
 type FieldSpec = { kind: FieldKind, ref: { Category }?, optional: boolean? }
-type CategorySpec = { key: string, prefix: string, fields: { [string]: FieldSpec } }
+type CategorySpec = {
+	key: string,
+	-- Every ID in the category starts with this.
+	prefix: string,
+	-- Verse style: `<namespace>.<name>` instead of a fixed prefix.
+	namespaced: boolean?,
+	fields: { [string]: FieldSpec },
+}
 
 local CATEGORIES: { Category } =
 	{ "chapter", "region", "quest", "cant", "verse", "burden", "waymark", "boss", "descent" }
@@ -126,7 +148,7 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	cant = {
 		key = "cants",
-		prefix = "cant-",
+		prefix = "cant.",
 		fields = {
 			starterEligible = { kind = "boolean" },
 			verseIds = { kind = "idList", ref = { "verse" } },
@@ -134,12 +156,20 @@ local SPECS: { [Category]: CategorySpec } = {
 	},
 	verse = {
 		key = "verses",
-		prefix = "verse-",
+		prefix = "",
+		namespaced = true,
 		fields = {
 			cantId = { kind = "id", ref = { "cant" } },
 		},
 	},
-	burden = { key = "burdens", prefix = "burden-", fields = {} },
+	burden = {
+		key = "burdens",
+		prefix = "burden-",
+		fields = {
+			-- A Burden belongs to one Cant (design report).
+			cantId = { kind = "id", ref = { "cant" } },
+		},
+	},
 	waymark = {
 		key = "waymarks",
 		prefix = "waymark-",
@@ -169,13 +199,40 @@ local COMMON_FIELDS = { id = true, name = true, launchRequired = true }
 local ContentRegistry = {}
 
 ContentRegistry.CATEGORIES = table.freeze(table.clone(CATEGORIES))
-ContentRegistry.ID_PATTERN = "^[a-z0-9][a-z0-9%-]*$"
+ContentRegistry.ID_PATTERN = "^[a-z0-9][a-z0-9._%-]*$"
+ContentRegistry.VERSE_ID_PATTERN = "^([a-z0-9_]+)%.[a-z0-9_]+$"
 
 function ContentRegistry.isValidId(value: unknown): boolean
-	return type(value) == "string"
-		and #value >= 1
-		and #value <= Limits.MAX_CANONICAL_ID_BYTES
-		and string.match(value, ContentRegistry.ID_PATTERN) ~= nil
+	if type(value) ~= "string" or #value < 1 or #value > Limits.MAX_CANONICAL_ID_BYTES then
+		return false
+	end
+	if string.match(value, ContentRegistry.ID_PATTERN) == nil then
+		return false
+	end
+	if string.find(value, "..", 1, true) ~= nil then
+		return false
+	end
+	return string.match(string.sub(value, -1), "[a-z0-9]") ~= nil
+end
+
+-- Words that open an ID of another category; a Verse namespace may not be
+-- one of them, so a Verse ID can never be mistaken for another kind.
+local RESERVED_NAMESPACES: { [string]: boolean } = {}
+for _, category in CATEGORIES do
+	RESERVED_NAMESPACES[category] = true
+end
+
+-- The namespace of a Verse-style ID (`near` for `near.close_step`), or nil
+-- when the value is not one.
+function ContentRegistry.verseNamespace(value: unknown): string?
+	if not ContentRegistry.isValidId(value) then
+		return nil
+	end
+	local namespace = string.match(value :: string, ContentRegistry.VERSE_ID_PATTERN)
+	if namespace == nil or RESERVED_NAMESPACES[namespace] then
+		return nil
+	end
+	return namespace
 end
 
 function ContentRegistry.prefixFor(category: Category): string
@@ -244,6 +301,8 @@ function ContentRegistry.validate(data: unknown): { string }
 
 	local index: { [string]: Located } = {}
 	local located: { Located } = {}
+	local namespaceOwner: { [string]: string } = {}
+	local cantNamespace: { [string]: string } = {}
 
 	-- Pass 1: shape, IDs, field types.
 	for _, category: Category in CATEGORIES do
@@ -272,7 +331,38 @@ function ContentRegistry.validate(data: unknown): { string }
 			else
 				local idStr = id :: string
 				where = where .. " (" .. idStr .. ")"
-				if string.sub(idStr, 1, #spec.prefix) ~= spec.prefix then
+				if spec.namespaced then
+					local namespace = ContentRegistry.verseNamespace(idStr)
+					if namespace == nil then
+						fail(where .. ": id must have the form '<namespace>.<name>'")
+					elseif type(entry.cantId) == "string" then
+						-- One namespace per Cant, one Cant per namespace.
+						local cantId = entry.cantId :: string
+						local owner = namespaceOwner[namespace]
+						local used = cantNamespace[cantId]
+						if owner ~= nil and owner ~= cantId then
+							fail(
+								where
+									.. ": namespace '"
+									.. namespace
+									.. "' already belongs to "
+									.. owner
+							)
+						elseif used ~= nil and used ~= namespace then
+							fail(
+								where
+									.. ": verses of "
+									.. cantId
+									.. " use the namespace '"
+									.. used
+									.. "'"
+							)
+						else
+							namespaceOwner[namespace] = cantId
+							cantNamespace[cantId] = namespace
+						end
+					end
+				elseif string.sub(idStr, 1, #spec.prefix) ~= spec.prefix then
 					fail(where .. ": id must start with '" .. spec.prefix .. "'")
 				end
 				local existing = index[idStr]

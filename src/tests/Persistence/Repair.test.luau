@@ -45,13 +45,13 @@ end)
 suite:case("data that cannot be fixed safely stays quarantined", function()
 	local raw: any = ProfileSchema.default()
 	raw.balances["currency-test"] = -5 -- a negative balance is not ours to guess
-	raw.cants.unlocked["cant-invented"] = true -- an unknown ID might be a registry gap
+	raw.cants.unlocked["cant.invented"] = true -- an unknown ID might be a registry gap
 	local report = Repair.attempt(raw)
 	Assert.isFalse(report.repaired, "not repaired")
 	Assert.count(report.changes, 0, "nothing changed")
 	Assert.count(report.remaining, 2, "both problems remain")
 	Assert.equal(report.profile.balances["currency-test"], -5, "data preserved for an operator")
-	Assert.equal(report.profile.cants.unlocked["cant-invented"], true, "unknown unlock preserved")
+	Assert.equal(report.profile.cants.unlocked["cant.invented"], true, "unknown unlock preserved")
 end)
 
 suite:case("non-table records and future schemas are not repaired", function()

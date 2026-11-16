@@ -39,17 +39,8 @@ local function lastReason(env: Suite.Env, category: string?): string
 	return if last ~= nil then tostring(last.fields.reason) else ""
 end
 
-local function kit(): any
-	return {
-		cooldownSteps = 0,
-		usableIn = { "Idle" },
-		effect = function() end,
-		provisional = true,
-	}
-end
-
--- Player 1 owns cant-ta (with verse-ta1) and cant-tc (with verse-tc1),
--- has cant-ta equipped, and stands at the origin.
+-- Player 1 owns cant.ta (with ta.v1) and cant.tc (with tc.v1),
+-- has cant.ta equipped, and stands at the origin.
 local function harness(env: Suite.Env): Harness
 	local cantCatalog, verseCatalog = ContentFixtures.catalogs()
 	local effects: { string } = {}
@@ -73,14 +64,13 @@ local function harness(env: Suite.Env): Harness
 			end
 		end,
 		cantCatalog = cantCatalog,
-		cantKits = { ["cant-ta"] = kit(), ["cant-tc"] = kit() },
 		verseCatalog = verseCatalog,
-		verseEffects = { ["verse-ta1"] = record, ["verse-tc1"] = record },
+		verseEffects = { ["ta.v1"] = record, ["tc.v1"] = record },
 	})
 	local profile: any = ProfileSchema.default()
-	profile.cants.unlocked = { ["cant-ta"] = true, ["cant-tc"] = true }
+	profile.cants.unlocked = { ["cant.ta"] = true, ["cant.tc"] = true }
 	profile.cants.verses =
-		{ ["cant-ta"] = { ["verse-ta1"] = true }, ["cant-tc"] = { ["verse-tc1"] = true } }
+		{ ["cant.ta"] = { ["ta.v1"] = true }, ["cant.tc"] = { ["tc.v1"] = true } }
 	local profiles = {
 		profileFor = function(_, userId: number)
 			return if userId == 1 then profile else nil
@@ -123,7 +113,7 @@ local function harness(env: Suite.Env): Harness
 	sessions:markProfileLoaded(player, true)
 	combat:addPlayer(1)
 	local me = combat:combatantId(1)
-	Assert.isTrue(combat.cants:equip(me, "cant-ta").ok, "equip cant-ta")
+	Assert.isTrue(combat.cants:equip(me, "cant.ta").ok, "equip cant.ta")
 	return {
 		send = function(payload: unknown, spaced: boolean?)
 			if spaced ~= false then
@@ -166,35 +156,31 @@ suite:case("a valid cast spends its cost, waits its cast time and resolves once"
 	enemy(h, "e", pos(0, 0, -10))
 	local me = h.combat.sim:get(h.me) :: any
 	local stamina = me.resources.stamina
-	local result = h.send({ verseId = "verse-ta1", target = "e" })
+	local result = h.send({ verseId = "ta.v1", target = "e" })
 	Assert.equal(result.status, "OK", tostring(result.message))
 	Assert.equal(result.data.resolveStep, h.combat.sim:stepNumber() + 6, "cast time")
 	Assert.equal(me.resources.stamina, stamina - 20, "cost spent at cast")
 	steps(h, 5)
 	Assert.equal(#h.effects, 0, "not yet")
 	steps(h, 1)
-	Assert.deepEqual(
-		h.effects,
-		{ "verse-ta1>e" },
-		"resolved on the server with the verified target"
-	)
+	Assert.deepEqual(h.effects, { "ta.v1>e" }, "resolved on the server with the verified target")
 	steps(h, 10)
 	Assert.equal(#h.effects, 1, "exactly once")
 end)
 
 suite:case("cast spam: already casting, cooldown and the rate class", function(env)
 	local h = harness(env)
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "OK", "first")
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "REJECTED", "second")
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "OK", "first")
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "REJECTED", "second")
 	Assert.equal(lastReason(env), "already casting", "reason")
 	steps(h, 6)
 	Assert.equal(#h.effects, 1, "resolved")
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "REJECTED", "cooldown")
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "REJECTED", "cooldown")
 	Assert.equal(lastReason(env), "cooldown", "reason")
 	Assert.equal(#h.effects, 1, "no extra effect")
 	local limited = 0
 	for _ = 1, 20 do
-		if h.send({ verseId = "verse-ta1" }, false).status == "RATE_LIMITED" then
+		if h.send({ verseId = "ta.v1" }, false).status == "RATE_LIMITED" then
 			limited += 1
 		end
 	end
@@ -217,11 +203,7 @@ suite:case("forged targets are verified and refused", function(env)
 	local me = h.combat.sim:get(h.me) :: any
 	local stamina = me.resources.stamina
 	for _, c in cases do
-		Assert.equal(
-			h.send({ verseId = "verse-ta1", target = c.target }).status,
-			"REJECTED",
-			c.target
-		)
+		Assert.equal(h.send({ verseId = "ta.v1", target = c.target }).status, "REJECTED", c.target)
 		Assert.equal(lastReason(env), c.reason, c.target)
 	end
 	Assert.equal(me.resources.stamina, stamina, "nothing spent")
@@ -231,37 +213,37 @@ end)
 
 suite:case("an incompatible equipped Cant refuses the Verse", function(env)
 	local h = harness(env)
-	Assert.equal(h.send({ verseId = "verse-tc1" }).status, "REJECTED", "cant-ta equipped")
+	Assert.equal(h.send({ verseId = "tc.v1" }).status, "REJECTED", "cant.ta equipped")
 	Assert.equal(lastReason(env), "incompatible cant", "reason")
 	h.combat.cants:equip(h.me, nil)
-	Assert.equal(h.send({ verseId = "verse-tc1" }).status, "REJECTED", "nothing equipped")
+	Assert.equal(h.send({ verseId = "tc.v1" }).status, "REJECTED", "nothing equipped")
 	Assert.equal(lastReason(env), "no cant equipped", "reason")
-	h.combat.cants:equip(h.me, "cant-tc")
-	Assert.equal(h.send({ verseId = "verse-tc1" }).status, "OK", "compatible now")
+	h.combat.cants:equip(h.me, "cant.tc")
+	Assert.equal(h.send({ verseId = "tc.v1" }).status, "OK", "compatible now")
 	steps(h, 1)
-	Assert.deepEqual(h.effects, { "verse-tc1>none" }, "instant cast resolves next step")
+	Assert.deepEqual(h.effects, { "tc.v1>none" }, "instant cast resolves next step")
 end)
 
 suite:case("locked, unknown and malformed Verses never cast", function(env)
 	local h = harness(env)
-	Assert.equal(h.send({ verseId = "verse-ta2" }).status, "UNAUTHORIZED", "not unlocked")
+	Assert.equal(h.send({ verseId = "ta.v2" }).status, "UNAUTHORIZED", "not unlocked")
 	Assert.equal(lastReason(env, "security"), "verse not unlocked", "security log")
-	Assert.equal(h.send({ verseId = "verse-invented" }).status, "REJECTED", "undefined")
+	Assert.equal(h.send({ verseId = "none.invented" }).status, "REJECTED", "undefined")
 	Assert.equal(lastReason(env), "unknown verse", "reason")
 	for _, payload in
 		{
-			{ verseId = "cant-ta" },
+			{ verseId = "cant.ta" },
 			{ verseId = "Verse TA1" },
 			{ verseId = 5 },
 			{},
-			{ verseId = "verse-ta1", target = "" },
-			{ verseId = "verse-ta1", damage = 999 },
+			{ verseId = "ta.v1", target = "" },
+			{ verseId = "ta.v1", damage = 999 },
 		} :: { any }
 	do
 		Assert.equal(h.send(payload).status, "BAD_PAYLOAD", "shape")
 	end
-	h.profile.cants.unlocked["cant-ta"] = nil
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "UNAUTHORIZED", "Cant revoked")
+	h.profile.cants.unlocked["cant.ta"] = nil
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "UNAUTHORIZED", "Cant revoked")
 	steps(h, 20)
 	Assert.equal(#h.effects, 0, "no effects")
 end)
@@ -270,17 +252,17 @@ suite:case("an unaffordable cast spends nothing and starts no cooldown", functio
 	local h = harness(env)
 	local me = h.combat.sim:get(h.me) :: any
 	me.resources.stamina = 19
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "REJECTED", "poor")
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "REJECTED", "poor")
 	Assert.equal(lastReason(env), "cannot afford", "reason")
 	Assert.equal(me.resources.stamina, 19, "unchanged")
-	Assert.equal(h.combat.verses:cooldownRemaining(h.me, "verse-ta1"), 0, "no cooldown")
+	Assert.equal(h.combat.verses:cooldownRemaining(h.me, "ta.v1"), 0, "no cooldown")
 end)
 
 suite:case("being hit interrupts a cast: no effect, costs and cooldown stay", function(env)
 	local h = harness(env)
 	local me = h.combat.sim:get(h.me) :: any
 	local stamina = me.resources.stamina
-	Assert.equal(h.send({ verseId = "verse-ta1" }).status, "OK", "cast")
+	Assert.equal(h.send({ verseId = "ta.v1" }).status, "OK", "cast")
 	steps(h, 2)
 	-- A hit interrupts through the damage layer's hit stun.
 	local ActionMachine = require(ServerScriptService.Server.Combat.ActionMachine)
@@ -288,12 +270,12 @@ suite:case("being hit interrupts a cast: no effect, costs and cooldown stay", fu
 	steps(h, 10)
 	Assert.equal(#h.effects, 0, "fizzled")
 	Assert.equal(me.resources.stamina < stamina, true, "cost stays spent")
-	Assert.isTrue(h.combat.verses:cooldownRemaining(h.me, "verse-ta1") > 0, "cooldown runs")
+	Assert.isTrue(h.combat.verses:cooldownRemaining(h.me, "ta.v1") > 0, "cooldown runs")
 	Assert.isNil(h.combat.verses:casting(h.me), "no cast pending")
 	h.combat:replicate()
 	local interrupted = false
 	for _, cue in h.cues do
-		if cue.kind == "verse_interrupted" and cue.data.verseId == "verse-ta1" then
+		if cue.kind == "verse_interrupted" and cue.data.verseId == "ta.v1" then
 			interrupted = true
 		end
 	end

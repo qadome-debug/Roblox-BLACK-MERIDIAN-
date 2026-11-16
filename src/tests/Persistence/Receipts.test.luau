@@ -34,7 +34,7 @@ local CATALOG = RewardCatalog.build({
 		kind = "permanent",
 		sources = { "waymark" },
 		grants = {
-			cants = { "cant-nearness" },
+			cants = { "cant.nearness" },
 			waymarks = { "waymark-i" },
 			instances = { "item-test-blade" },
 		},
@@ -98,7 +98,7 @@ suite:case("a permanent grant applies once and writes its receipt atomically", f
 	Assert.equal(s.queue:flush(KEY), "committed", "committed")
 	local p = stored(env)
 	Assert.equal(p.receipts.permanent[receiptId], true, "receipt")
-	Assert.equal(p.cants.unlocked["cant-nearness"], true, "cant unlocked")
+	Assert.equal(p.cants.unlocked["cant.nearness"], true, "cant unlocked")
 	Assert.equal(p.waymarks["waymark-i"].activated, true, "waymark activated")
 	Assert.count(p.inventory, 1, "instance granted")
 	Assert.isTrue(

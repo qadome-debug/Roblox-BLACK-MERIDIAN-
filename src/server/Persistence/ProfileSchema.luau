@@ -112,7 +112,9 @@ local function expectIdMap(
 	value: unknown,
 	category: ContentRegistry.Category,
 	max: number,
-	checkValue: (path: string, value: unknown) -> ()
+	-- Receives the key itself as well as its path. IDs may contain dots
+	-- (`cant.nearness`), so a key can never be recovered from the path.
+	checkValue: (path: string, value: unknown, key: string) -> ()
 )
 	local t = expectTable(ctx, path, value)
 	if t == nil then
@@ -125,7 +127,7 @@ local function expectIdMap(
 		if Canon:resolve(category, key) == nil then
 			fail(ctx, path, "unknown " .. category .. " id " .. tostring(key))
 		else
-			checkValue(path .. "." .. (key :: string), item)
+			checkValue(path .. "." .. (key :: string), item, key :: string)
 		end
 	end
 end
@@ -153,7 +155,7 @@ local function validateQuests(ctx: Ctx, value: unknown)
 		quests.active,
 		"quest",
 		P.MAX_ACTIVE_QUESTS,
-		function(path, item)
+		function(path, item, questId)
 			local progress = expectTable(ctx, path, item)
 			if progress == nil then
 				return
@@ -166,7 +168,6 @@ local function validateQuests(ctx: Ctx, value: unknown)
 				flags = true,
 				choices = true,
 			})
-			local questId = string.match(path, "([^%.]+)$")
 			if progress.questId ~= questId then
 				fail(ctx, path, "questId does not match its key")
 			end
@@ -259,8 +260,7 @@ local function validateCants(ctx: Ctx, value: unknown)
 		cants.verses,
 		"cant",
 		P.MAX_UNLOCKED_CANTS,
-		function(path, item)
-			local cantId = string.match(path, "([^%.]+)$") :: string
+		function(path, item, cantId)
 			local t = expectTable(ctx, path, item)
 			if t == nil then
 				return

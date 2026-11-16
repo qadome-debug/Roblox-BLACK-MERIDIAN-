@@ -36,9 +36,11 @@ export type Effect = (ctx: Context) -> ()
 -- The parts of a Verse catalog the pipeline reads (VerseCatalog satisfies
 -- it; the simulation layer does not depend on Content).
 export type VerseDef = {
-	costs: { { pool: Resources.Pool, amount: number } },
-	castSteps: number,
-	cooldownSteps: number,
+	-- nil while the design has not established the value; such a Verse
+	-- cannot be cast.
+	costs: { { pool: Resources.Pool, amount: number } }?,
+	castSeconds: number?,
+	cooldownSeconds: number,
 }
 
 export type Catalog = {
@@ -78,6 +80,10 @@ local OK: ActionMachine.Outcome = { ok = true } :: any
 function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 	local effects = deps.effects or {}
 	local range = deps.maxTargetRange or Verses.DEFAULT_TARGET_RANGE
+	-- The design gives times in seconds; the simulation counts steps.
+	local function toSteps(seconds: number): number
+		return math.max(0, math.floor(seconds / sim.stepSeconds + 0.5))
+	end
 	local casts: { [string]: Cast } = {}
 	local readyAt: { [string]: { [string]: number } } = {}
 
@@ -114,6 +120,13 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		if def == nil then
 			return fail("unknown verse")
 		end
+		-- A registered Verse whose costs or cast time the design has not
+		-- set yet is known but not available. Nothing is assumed for it.
+		local costs = def.costs
+		local castSeconds = def.castSeconds
+		if costs == nil or castSeconds == nil then
+			return fail("verse not available")
+		end
 		local equipped = deps.cants:equipped(id)
 		if equipped == nil then
 			return fail("no cant equipped")
@@ -124,7 +137,7 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		if self:cooldownRemaining(id, verseId) > 0 then
 			return fail("cooldown")
 		end
-		for _, cost in def.costs do
+		for _, cost in costs do
 			if not Resources.canAfford(caster.resources, cost.pool, cost.amount) then
 				return fail("cannot afford")
 			end
@@ -146,17 +159,17 @@ function Verses.attach(sim: Simulation.Simulation, deps: Deps): Layer
 		end
 
 		local step = sim:stepNumber()
-		for _, cost in def.costs do
+		for _, cost in costs do
 			Resources.spend(caster.resources, cost.pool, cost.amount, sim:now())
 		end
 		local byVerse = readyAt[id] or {}
-		byVerse[verseId] = step + def.cooldownSteps
+		byVerse[verseId] = step + toSteps(def.cooldownSeconds)
 		readyAt[id] = byVerse
 		casts[id] = {
 			verseId = verseId,
 			target = targetId,
 			startedStep = step,
-			resolveStep = step + def.castSteps,
+			resolveStep = step + toSteps(castSeconds),
 		}
 		sim:emit("verse_cast_started", id, { verseId = verseId, target = targetId })
 		return OK

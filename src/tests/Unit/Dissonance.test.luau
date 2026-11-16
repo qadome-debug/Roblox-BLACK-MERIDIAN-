@@ -1,7 +1,9 @@
 --!strict
--- BM-068: Dissonance threshold crossings, decay, repeated actions,
--- determinism, and the client path (an action name only, never a value).
+-- BM-068: the Dissonance meter follows the design's five bands, rises and
+-- recovers only through the design's sources, is never saved, and can
+-- never be set by a client.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -10,207 +12,295 @@ local CombatService = require(ServerScriptService.Server.Services.CombatService)
 local ContentFixtures = require(ServerStorage.Tests.Support.ContentFixtures)
 local Dissonance = require(ServerScriptService.Server.Combat.Dissonance)
 local DissonanceAction = require(ServerScriptService.Server.Network.Adapters.DissonanceAction)
+local ProfileSchema = require(ServerScriptService.Server.Persistence.ProfileSchema)
 local Simulation = require(ServerScriptService.Server.Combat.Simulation)
 local Suite = require(ServerStorage.Tests.Support.Suite)
 local Telemetry = require(ServerScriptService.Server.Logging.Telemetry)
 local Validators = require(ServerScriptService.Server.Network.Validators)
+local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
 
 local suite = Suite.new("Dissonance")
 
-local TUNING: Dissonance.Tuning = {
-	max = 100,
-	thresholds = { 30, 60, 90 },
-	decayPerStep = 1,
-	decayDelaySteps = 5,
-	provisional = false,
+local BASE = { vigor = 10, might = 10, grace = 10, will = 10 }
+
+type Setup = {
+	sim: Simulation.Simulation,
+	layer: Dissonance.Layer,
+	events: (kind: string) -> { any },
 }
 
-type Setup = { sim: Simulation.Simulation, layer: Dissonance.Layer, effects: { string } }
-
-local function setup(env: Suite.Env): Setup
-	local sim = Simulation.new({ logger = env.logger, rng = env.rng:fork("d") })
-	local effects: { string } = {}
-	local layer = Dissonance.attach(sim, {
-		tuning = TUNING,
-		actions = {
-			vent = {
-				minLevel = 1,
-				consume = 30,
-				cooldownSteps = 10,
-				effect = function(ctx)
-					table.insert(effects, ctx.actionId .. "@" .. ctx.level)
-				end,
-			},
-			stoke = { minLevel = 0, consume = -20, cooldownSteps = 0, effect = function() end },
-		},
-	})
-	sim:addCombatant({ id = "a", team = "players" })
-	return { sim = sim, layer = layer, effects = effects }
-end
-
-local function levelEvents(sim: Simulation.Simulation): { string }
-	local out: { string } = {}
-	for _, e in sim:drainEvents() do
-		if e.kind == "dissonance_level_changed" then
-			local data = e.data :: any
-			table.insert(out, data.previous .. ">" .. data.level)
+local function setup(env: Suite.Env, deps: Dissonance.Deps?): Setup
+	local sim = Simulation.new({ logger = env.logger, rng = env.rng })
+	sim:addCombatant({ id = "a", team = "players", base = BASE, position = Vec3.new(0, 0, 0) })
+	local layer = Dissonance.attach(sim, deps)
+	local seen: { any } = {}
+	local function events(kind: string): { any }
+		for _, event in sim:drainEvents() do
+			table.insert(seen, event)
 		end
+		local out = {}
+		for _, event in seen do
+			if event.kind == kind then
+				table.insert(out, event)
+			end
+		end
+		return out
 	end
-	return out
+	return { sim = sim, layer = layer, events = events }
 end
 
-suite:case("threshold crossings change level exactly at the boundary", function(env)
-	local s = setup(env)
-	Assert.equal(s.layer:add("a", 29.5, "test"), 29.5, "below")
-	Assert.equal(s.layer:level("a"), 0, "level 0")
-	s.layer:add("a", 0.5, "test")
-	Assert.equal(s.layer:level("a"), 1, "exactly 30 is level 1")
-	s.layer:add("a", 200, "test")
-	Assert.equal(s.layer:value("a"), 100, "clamped to max")
-	Assert.equal(s.layer:level("a"), 3, "top level")
-	Assert.deepEqual(levelEvents(s.sim), { "0>1", "1>3" }, "one event per change")
-	for _, bad in { -5, 0, 0 / 0, math.huge } do
-		s.layer:add("a", bad, "test")
+suite:case("the five bands are the design's, with exact boundaries", function(env)
+	Assert.equal(Dissonance.MAX, 100, "0 to 100")
+	local names = {}
+	local mins = {}
+	for _, band in Dissonance.BANDS do
+		table.insert(names, band.name)
+		table.insert(mins, band.min)
 	end
-	Assert.equal(s.layer:value("a"), 100, "invalid amounts ignored")
-	Assert.equal(s.layer:add("ghost", 10, "test"), 0, "unknown combatant ignored")
+	Assert.deepEqual(mins, { 0, 40, 65, 85, 100 }, "band starts")
+	Assert.deepEqual(names, {
+		"Stable",
+		"Noticeable instability",
+		"Enemy and environmental reactions",
+		"Fractured event risk",
+		"Controlled rupture",
+	}, "band names")
+	local expected: { [number]: number } = {
+		[0] = 0,
+		[39] = 0,
+		[39.99] = 0,
+		[40] = 1,
+		[64] = 1,
+		[65] = 2,
+		[84] = 2,
+		[85] = 3,
+		[99] = 3,
+		[99.99] = 3,
+		[100] = 4,
+	}
+	for value, level in expected do
+		Assert.equal(Dissonance.levelFor(value), level, "band of " .. value)
+	end
+
+	local s = setup(env)
+	Assert.equal(s.layer:band("a").key, "stable", "starts stable")
+	s.layer:add("a", 39, "verse")
+	Assert.equal(s.layer:level("a"), 0, "39 is still Stable")
+	Assert.count(s.events("dissonance_band_changed"), 0, "no event below 40")
+	s.layer:add("a", 1, "verse")
+	Assert.equal(s.layer:level("a"), 1, "40 crosses")
+	local changes = s.events("dissonance_band_changed")
+	Assert.count(changes, 1, "one event per crossing")
+	Assert.equal(changes[1].data.band, "instability", "band key")
+	Assert.equal(changes[1].data.previous, 0, "previous band")
+	Assert.equal(changes[1].data.source, "verse", "source")
+	s.layer:add("a", 5, "enemyAttack")
+	Assert.count(s.events("dissonance_band_changed"), 1, "no event inside a band")
 end)
 
-suite:case("decay waits for the quiet period and walks levels down", function(env)
+suite:case("the meter is clamped, and a jump across bands is one event", function(env)
 	local s = setup(env)
-	s.layer:add("a", 62, "test")
-	levelEvents(s.sim)
-	for _ = 1, 4 do
-		s.sim:step()
+	Assert.equal(s.layer:add("a", 90, "unstableArea"), 90, "raised")
+	local changes = s.events("dissonance_band_changed")
+	Assert.count(changes, 1, "one event for the jump")
+	Assert.equal(changes[1].data.level, 3, "landed in the fourth band")
+	Assert.equal(s.layer:add("a", 500, "relic"), 100, "clamped at 100")
+	Assert.equal(s.layer:recover("a", 5000, "camp"), 0, "clamped at 0")
+	Assert.equal(s.layer:level("a"), 0, "stable again")
+	-- Bad amounts change nothing.
+	for _, amount: any in { 0, -5, 0 / 0, math.huge, "10" } :: { any } do
+		Assert.equal(s.layer:add("a", amount, "verse"), 0, "ignored " .. tostring(amount))
+		Assert.equal(s.layer:recover("a", amount, "anchor"), 0, "ignored " .. tostring(amount))
 	end
-	Assert.equal(s.layer:value("a"), 62, "no decay inside the delay")
-	for _ = 1, 3 do
-		s.sim:step()
-	end
-	Assert.equal(s.layer:value("a"), 59, "decaying after the delay")
-	Assert.deepEqual(levelEvents(s.sim), { "2>1" }, "crossed down once")
-	for _ = 1, 100 do
-		s.sim:step()
-	end
-	Assert.equal(s.layer:value("a"), 0, "floors at zero")
-	Assert.equal(s.layer:level("a"), 0, "level 0")
+	Assert.equal(s.layer:add("ghost", 10, "verse"), 0, "unknown combatant")
 end)
 
-suite:case("repeated actions respect level, cost and cooldown", function(env)
+suite:case("only the design's sources raise or recover Dissonance", function(env)
 	local s = setup(env)
-	local function reason(o: any): string?
-		return if o.ok then nil else o.reason
+	for _, source: any in
+		{ "verse", "relic", "unstableArea", "enemyAttack", "failedContainment" } :: { any }
+	do
+		s.layer:add("a", 1, source)
 	end
-	Assert.equal(reason(s.layer:perform("a", "vent")), "dissonance too low", "level 0")
-	s.layer:add("a", 95, "test")
-	Assert.equal(reason(s.layer:perform("a", "vent")), nil, "vent at level 3")
-	Assert.equal(s.layer:value("a"), 65, "consumed 30")
-	Assert.equal(reason(s.layer:perform("a", "vent")), "cooldown", "again at once")
-	for _ = 1, 10 do
+	Assert.equal(s.layer:value("a"), 5, "five gain sources")
+	for _, source: any in
+		{ "stableEnvironment", "anchor", "camp", "consumable", "encounterComplete", "cooperative" } :: { any }
+	do
+		s.layer:recover("a", 0.5, source)
+	end
+	Assert.equal(s.layer:value("a"), 2, "six recovery sources")
+	Assert.throws(function()
+		s.layer:add("a", 1, "decay" :: any)
+	end, "unknown gain source", "an invented source is a programming error")
+	Assert.throws(function()
+		s.layer:recover("a", 1, "time" :: any)
+	end, "unknown recovery source", "time alone is not a recovery source")
+end)
+
+suite:case("nothing recovers by itself until a rate is approved", function(env)
+	-- Production: no tuning and no stable-environment check.
+	local s = setup(env)
+	s.layer:add("a", 50, "verse")
+	for _ = 1, 600 do
 		s.sim:step()
 	end
-	Assert.equal(s.layer:value("a"), 59, "consuming is not a rise, so decay ran")
-	Assert.equal(reason(s.layer:perform("a", "vent")), nil, "after cooldown")
-	Assert.equal(s.layer:value("a"), 29, "consumed again")
-	Assert.deepEqual(s.effects, { "vent@3", "vent@1" }, "effects ran with the level at use")
-	Assert.equal(reason(s.layer:perform("a", "nonsense")), "unknown action", "unknown")
-	Assert.equal(reason(s.layer:perform("a", "stoke")), nil, "stoke adds")
-	Assert.equal(s.layer:value("a"), 49, "added 20")
+	Assert.equal(s.layer:value("a"), 50, "no decay over time")
+	Assert.isNil(Dissonance.PRODUCTION_TUNING.stableRecoveryPerSecond, "no approved rate")
+
+	-- A rate without a stable environment still recovers nothing.
+	local outside = setup(env, { tuning = { stableRecoveryPerSecond = 6 } })
+	outside.layer:add("a", 50, "verse")
+	for _ = 1, 60 do
+		outside.sim:step()
+	end
+	Assert.equal(outside.layer:value("a"), 50, "not in a stable environment")
+end)
+
+suite:case("passive recovery runs only in a stable environment", function(env)
+	local stable = false
+	local s = setup(env, {
+		tuning = { stableRecoveryPerSecond = 6 },
+		inStableEnvironment = function(_id: string): boolean
+			return stable
+		end,
+	})
+	s.layer:add("a", 45, "verse")
+	for _ = 1, 30 do
+		s.sim:step()
+	end
+	Assert.equal(s.layer:value("a"), 45, "unstable ground: no recovery")
+	stable = true
+	-- One second of steps at the default step length removes 6.
+	local stepsPerSecond = math.floor(1 / s.sim.stepSeconds + 0.5)
+	for _ = 1, stepsPerSecond do
+		s.sim:step()
+	end
+	Assert.isTrue(
+		math.abs(s.layer:value("a") - 39) < 1e-6,
+		"6 per second, whatever the step length"
+	)
+	Assert.equal(s.layer:level("a"), 0, "walked down a band")
+	local last = s.events("dissonance_band_changed")
+	Assert.equal(last[#last].data.source, "stableEnvironment", "recovery source reported")
+end)
+
+suite:case("reaching 100 is a rupture handed to the region or encounter", function(env)
+	local ruptured: { string } = {}
+	local s = setup(env, {
+		onRupture = function(id: string)
+			table.insert(ruptured, id)
+		end,
+	})
+	s.layer:add("a", 99, "verse")
+	Assert.count(ruptured, 0, "99 is not a rupture")
+	s.layer:add("a", 1, "failedContainment")
+	Assert.deepEqual(ruptured, { "a" }, "handler called once")
+	Assert.count(s.events("dissonance_rupture"), 1, "announced once")
+	s.layer:add("a", 10, "verse")
+	Assert.count(ruptured, 1, "staying at 100 does not rupture again")
+	-- The layer itself takes nothing from the combatant.
+	Assert.notNil(s.sim:get("a"), "the combatant is untouched by the meter itself")
+end)
+
+suite:case("there are no player-triggered actions until a design is approved", function(env)
+	local s = setup(env)
+	Assert.equal(next(Dissonance.PRODUCTION_ACTIONS), nil, "production action list is empty")
+	Assert.isFalse(s.layer:hasAction("vent"), "no action")
+	Assert.equal((s.layer:perform("a", "vent") :: any).reason, "unknown action", "refused")
+
+	-- The mechanism still validates what it is given.
+	Assert.throws(function()
+		setup(env, { tuning = { stableRecoveryPerSecond = -1 } })
+	end, "stableRecoveryPerSecond", "bad rate")
+	Assert.throws(function()
+		setup(env, { tuning = { decayPerStep = 1 } :: any })
+	end, "unknown tuning field", "the old decay tuning is gone")
+	Assert.throws(function()
+		setup(env, {
+			actions = {
+				bad = { minLevel = 9, consume = 0, cooldownSteps = 0, effect = function() end },
+			},
+		})
+	end, "minLevel", "bad action")
 end)
 
 suite:case("the same inputs give the same transitions", function(env)
 	local function run(): { string }
-		local s = setup(env)
+		local s = setup(env, {
+			tuning = { stableRecoveryPerSecond = 3 },
+			inStableEnvironment = function(_id: string): boolean
+				return true
+			end,
+		})
 		local trace: { string } = {}
-		for step = 1, 60 do
-			if step % 7 == 0 then
-				s.layer:add("a", 18, "test")
-			end
-			if step % 11 == 0 then
-				s.layer:perform("a", "vent")
+		for step = 1, 240 do
+			if step % 40 == 1 then
+				s.layer:add("a", 22, "verse")
 			end
 			s.sim:step()
-			table.insert(trace, s.layer:value("a") .. "/" .. s.layer:level("a"))
+			table.insert(trace, string.format("%.4f:%d", s.layer:value("a"), s.layer:level("a")))
 		end
 		return trace
 	end
-	Assert.deepEqual(run(), run(), "deterministic")
+	Assert.deepEqual(run(), run(), "identical traces")
 end)
 
-suite:case("invalid tuning and actions are refused at attach", function(env)
-	local sim = Simulation.new({ logger = env.logger, rng = env.rng:fork("x") })
-	Assert.isTrue(#Dissonance.validateTuning(Dissonance.PROVISIONAL_TUNING) == 0, "provisional ok")
-	Assert.isTrue(#Dissonance.validateTuning({
-		max = 100,
-		thresholds = { 50, 40 },
-		decayPerStep = 1,
-		decayDelaySteps = 1,
-		provisional = true,
-	}) > 0, "descending thresholds")
-	Assert.isTrue(#Dissonance.validateTuning({
-		max = 10,
-		thresholds = { 50 },
-		decayPerStep = 1,
-		decayDelaySteps = 1,
-		provisional = true,
-	}) > 0, "threshold above max")
-	Assert.throws(function()
-		Dissonance.attach(sim, {
-			tuning = TUNING,
-			actions = {
-				bad = { minLevel = 9, consume = 1, cooldownSteps = 0, effect = function() end },
-			},
+suite:case(
+	"a resolved Verse adds its own Dissonance; a client can only name an action",
+	function(env)
+		local cantCatalog, verseCatalog = ContentFixtures.catalogs()
+		local combat = CombatService.new({
+			clock = env.clock,
+			rng = env.rng,
+			logger = env.logger,
+			telemetry = Telemetry.new(env.logger),
+			send = function() end,
+			cantCatalog = cantCatalog,
+			verseCatalog = verseCatalog,
 		})
-	end, "invalid configuration")
-end)
+		combat:addPlayer(1)
+		local id = combat:combatantId(1)
+		combat.cants:equip(id, "cant.ta")
+		-- ta.v1 states 10 Dissonance; tc.v1 states none.
+		Assert.isTrue(combat.verses:cast(id, "ta.v1", nil).ok, "cast")
+		Assert.equal(combat.dissonance:value(id), 0, "nothing until the Verse resolves")
+		for _ = 1, 8 do
+			combat.sim:step()
+		end
+		Assert.equal(combat.dissonance:value(id), 10, "raised by the resolved Verse's own value")
 
-suite:case("resolved Verses raise Dissonance and the client can only name an action", function(env)
-	local cantCatalog, verseCatalog = ContentFixtures.catalogs()
-	local combat = CombatService.new({
-		clock = env.clock,
-		rng = env.rng,
-		logger = env.logger,
-		telemetry = Telemetry.new(env.logger),
-		send = function() end,
-		cantCatalog = cantCatalog,
-		cantKits = {
-			["cant-tc"] = {
-				cooldownSteps = 0,
-				usableIn = { "Idle" },
-				effect = function() end,
-				provisional = true,
-			},
-		},
-		verseCatalog = verseCatalog,
-		dissonanceTuning = TUNING,
-		dissonancePerVerse = 12,
-	})
-	combat:addPlayer(1)
-	local id = combat:combatantId(1)
-	combat.cants:equip(id, "cant-tc")
-	Assert.isTrue(combat.verses:cast(id, "verse-tc1", nil).ok, "cast")
-	combat.sim:step()
-	Assert.equal(combat.dissonance:value(id), 12, "raised by the resolved Verse")
+		local validate = Validators.forAction("DissonanceAction") :: any
+		Assert.notNil(validate({ actionId = "vent" }), "an action name is accepted")
+		Assert.isNil(validate({ actionId = "vent", value = 0 }), "a meter value is refused")
+		Assert.isNil(validate({ level = 3 }), "a level is refused")
+		Assert.isNil(validate({ actionId = "" }), "empty refused")
 
-	local validate = Validators.forAction("DissonanceAction") :: any
-	Assert.notNil(validate({ actionId = "vent" }), "an action name is accepted")
-	Assert.isNil(validate({ actionId = "vent", value = 0 }), "a meter value is refused")
-	Assert.isNil(validate({ level = 3 }), "a level is refused")
-	Assert.isNil(validate({ actionId = "" }), "empty refused")
+		local adapter = DissonanceAction.new({ combat = combat } :: any)
+		local ctx: any =
+			{ userId = 1, requestId = "r1", action = "DissonanceAction", logger = env.logger }
+		local result: any = adapter.handle(ctx, { actionId = "anything" })
+		Assert.equal(result.status, "REJECTED", "no player-triggered actions exist")
+		Assert.equal(combat.dissonance:value(id), 10, "a request never moves the meter")
+		ctx.userId = 2
+		Assert.equal(
+			(adapter.handle(ctx, { actionId = "x" }) :: any).status,
+			"NOT_READY",
+			"no combatant"
+		)
 
-	local adapter = DissonanceAction.new({ combat = combat } :: any)
-	local ctx: any =
-		{ userId = 1, requestId = "r1", action = "DissonanceAction", logger = env.logger }
-	local result: any = adapter.handle(ctx, { actionId = "anything" })
-	Assert.equal(result.status, "REJECTED", "production has no canonical actions yet")
-	ctx.userId = 2
-	Assert.equal(
-		(adapter.handle(ctx, { actionId = "x" }) :: any).status,
-		"NOT_READY",
-		"no combatant"
-	)
-	combat:removePlayer(1)
-	Assert.equal(combat.dissonance:value(id), 0, "forgotten on leave")
-end)
+		-- Not saved: the profile schema's field stays at zero and a combatant
+		-- that leaves and returns starts from zero.
+		Assert.equal((ProfileSchema.default() :: any).burdens.dissonance, 0, "nothing saved")
+		combat:removePlayer(1)
+		Assert.equal(combat.dissonance:value(id), 0, "forgotten on leave")
+		combat:addPlayer(1)
+		Assert.equal(
+			combat.dissonance:value(combat:combatantId(1)),
+			0,
+			"a new session starts at zero"
+		)
+		Assert.equal(combat.dissonance:band(combat:combatantId(1)).name, "Stable", "and Stable")
+	end
+)
 
 return suite:cases()

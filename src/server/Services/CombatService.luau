@@ -52,19 +52,20 @@ export type Deps = {
 	stepSeconds: number?,
 	-- Seconds between replication pushes (default 1/20).
 	replicateInterval: number?,
-	-- Cant kits by Cant ID (default Cants.PRODUCTION_KITS). Every kit must
-	-- name a Cant in the production catalog.
-	cantKits: { [string]: Cants.Kit }?,
 	-- Cant catalog (default CantCatalog.production()).
 	cantCatalog: CantCatalog.Catalog?,
 	-- Verse catalog (default VerseCatalog.production()) and server effects.
 	verseCatalog: VerseCatalog.Catalog?,
 	verseEffects: { [string]: Verses.Effect }?,
-	-- Dissonance tuning and actions (defaults: provisional tuning, no
-	-- actions) and the amount a resolved Verse adds (provisional).
+	-- Dissonance tuning and actions (defaults: nothing approved yet, so no
+	-- passive recovery and no actions). A resolved Verse adds the amount
+	-- its own definition states, and nothing when that is unset.
 	dissonanceTuning: Dissonance.Tuning?,
 	dissonanceActions: { [string]: Dissonance.ActionDef }?,
-	dissonancePerVerse: number?,
+	-- World hooks for Dissonance: whether a combatant is in a stable
+	-- environment, and the region or encounter handler for a rupture.
+	inStableEnvironment: ((combatantId: string) -> boolean)?,
+	onRupture: ((combatantId: string) -> ())?,
 }
 
 export type PlayerSpec = {
@@ -113,8 +114,6 @@ local CombatService = {}
 
 CombatService.PLAYER_TEAM = "players"
 CombatService.ENEMY_TEAM = "enemies"
--- Provisional until the design inventory supplies Dissonance rates.
-CombatService.PROVISIONAL_DISSONANCE_PER_VERSE = 10
 CombatService.DEFAULT_REPLICATE_INTERVAL = 1 / 20
 
 local function playerId(userId: number): string
@@ -143,7 +142,6 @@ function CombatService.new(deps: Deps): Service
 	local replication = Replication.new(sim, { targeting = targeting })
 	local catalog = deps.cantCatalog or CantCatalog.production()
 	local cants = Cants.attach(sim, {
-		kits = deps.cantKits or Cants.PRODUCTION_KITS,
 		resolve = function(value)
 			return catalog:resolve(value)
 		end,
@@ -152,15 +150,18 @@ function CombatService.new(deps: Deps): Service
 	local dissonance = Dissonance.attach(sim, {
 		tuning = deps.dissonanceTuning,
 		actions = deps.dissonanceActions,
+		inStableEnvironment = deps.inStableEnvironment,
+		onRupture = deps.onRupture,
 	})
-	local dissonancePerVerse = deps.dissonancePerVerse
-		or CombatService.PROVISIONAL_DISSONANCE_PER_VERSE
 	local verses = Verses.attach(sim, {
 		catalog = verseCatalog,
 		cants = cants,
 		effects = deps.verseEffects,
 		onResolved = function(casterId: string, verseId: string)
-			dissonance:add(casterId, dissonancePerVerse, verseId)
+			local def = verseCatalog:get(verseId)
+			if def ~= nil and def.dissonance ~= nil and def.dissonance > 0 then
+				dissonance:add(casterId, def.dissonance, "verse")
+			end
 		end,
 	})
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL

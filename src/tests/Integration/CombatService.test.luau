@@ -161,33 +161,39 @@ suite:case(
 	end
 )
 
-suite:case("an equipped Cant activates on the server and its cue reaches everyone", function(env)
+suite:case("a Cant is equipped on the server and has no ability of its own", function(env)
 	local h = harness(env)
 	h.poses[1] = { position = pos(0, 0, 0), facing = pos(0, 0, -1) }
 	h.poses[2] = { position = pos(4, 0, 0), facing = pos(0, 0, -1) }
 	h.service:addPlayer(1)
 	h.service:addPlayer(2)
 	local id = h.service:combatantId(1)
-	Assert.isTrue(h.service.cants:equip(id, "cant-nearness").ok, "equip Nearness")
-	Assert.isFalse(h.service.cants:equip(id, "cant-invented").ok, "fabricated Cant refused")
-	Assert.isTrue(h.service.cants:activate(id).ok, "activate")
-	Assert.isFalse(h.service.cants:activate(id).ok, "cooldown")
+	Assert.isTrue(h.service.cants:equip(id, "cant.nearness").ok, "equip Nearness")
+	Assert.isFalse(h.service.cants:equip(id, "cant.invented").ok, "fabricated Cant refused")
+	Assert.isFalse(h.service.cants:equip(id, "cant-nearness").ok, "the old ID is refused")
+	Assert.isNil((h.service.cants :: any).activate, "no standalone activation")
 	for _ = 1, 3 do
 		h.service:tick(1 / 30)
 	end
-	local seen = false
 	for _, batch in sentTo(h, 2, "CombatCue") do
 		for _, cue in batch.cues do
-			if cue.kind == "cant_activated" and cue.id == id then
-				Assert.equal(cue.data.cantId, "cant-nearness", "cant id replicated")
-				Assert.isNil(cue.data.provisional, "internal flags are not replicated")
-				seen = true
-			end
+			Assert.notEqual(cue.kind, "cant_activated", "no activation cue exists")
 		end
 	end
-	Assert.isTrue(seen, "the other player saw the activation")
+
+	-- The four Nearness Verses are registered with their confirmed
+	-- cooldowns, but cannot be cast until the rest of their values are
+	-- approved: nothing is spent and no cue is produced.
+	for _, verseId in { "near.close_step", "near.draw_near", "near.between_us", "near.no_farther" } do
+		Assert.isTrue(h.service.verseCatalog:isCompatible(verseId, "cant.nearness"), verseId)
+		local outcome: any = h.service.verses:cast(id, verseId, nil)
+		Assert.isFalse(outcome.ok, verseId .. " cannot be cast yet")
+		Assert.equal(outcome.reason, "verse not available", verseId .. " reason")
+		Assert.equal(h.service.verses:cooldownRemaining(id, verseId), 0, "no cooldown started")
+	end
+	Assert.equal(h.service.dissonance:value(id), 0, "no Dissonance from a refused cast")
 	h.service:removePlayer(1)
-	Assert.isNil(h.service.cants:equipped(id), "forgotten on leave")
+	h.service:removePlayer(2)
 end)
 
 return suite:cases()

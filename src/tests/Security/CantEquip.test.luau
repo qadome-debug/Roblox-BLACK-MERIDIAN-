@@ -119,13 +119,13 @@ local function harness(env: Suite.Env, owned: { string }): Harness
 end
 
 suite:case("an owned Cant equips, saves and reaches the combat layer", function(env)
-	local h = harness(env, { "cant-nearness" })
-	local result = h.send({ slot = "primary", cantId = "cant-nearness" })
+	local h = harness(env, { "cant.nearness" })
+	local result = h.send({ slot = "primary", cantId = "cant.nearness" })
 	Assert.equal(result.status, "OK", tostring(result.message))
 	Assert.isTrue(result.data.changed, "changed")
-	Assert.equal(h.profile().cants.equipped, "cant-nearness", "saved on the profile")
-	Assert.deepEqual(h.mutations, { "cant-equip:cant-nearness" }, "one save queued")
-	Assert.equal(h.combat.cants:equipped(h.combat:combatantId(1)), "cant-nearness", "mirrored")
+	Assert.equal(h.profile().cants.equipped, "cant.nearness", "saved on the profile")
+	Assert.deepEqual(h.mutations, { "cant-equip:cant.nearness" }, "one save queued")
+	Assert.equal(h.combat.cants:equipped(h.combat:combatantId(1)), "cant.nearness", "mirrored")
 	Assert.isTrue(ProfileSchema.isValid(h.profile()), "profile still valid")
 	local off = h.send({ slot = "primary" })
 	Assert.equal(off.status, "OK", "unequip")
@@ -134,15 +134,15 @@ suite:case("an owned Cant equips, saves and reaches the combat layer", function(
 end)
 
 suite:case("forged and malformed Cant IDs never reach the adapter", function(env)
-	local h = harness(env, { "cant-nearness" })
+	local h = harness(env, { "cant.nearness" })
 	for _, payload in
 		{
-			{ slot = "primary", cantId = "cant-invented" },
+			{ slot = "primary", cantId = "cant.invented" },
 			{ slot = "primary", cantId = "Nearness" },
 			{ slot = "primary", cantId = 7 },
-			{ slot = "tertiary", cantId = "cant-nearness" },
-			{ cantId = "cant-nearness" },
-			{ slot = "primary", cantId = "cant-nearness", force = true },
+			{ slot = "tertiary", cantId = "cant.nearness" },
+			{ cantId = "cant.nearness" },
+			{ slot = "primary", cantId = "cant.nearness", force = true },
 		} :: { any }
 	do
 		Assert.equal(h.send(payload).status, "BAD_PAYLOAD", "refused at the validator")
@@ -152,7 +152,7 @@ end)
 
 suite:case("a Cant the player does not own is UNAUTHORIZED", function(env)
 	local h = harness(env, {})
-	local result = h.send({ slot = "primary", cantId = "cant-nearness" })
+	local result = h.send({ slot = "primary", cantId = "cant.nearness" })
 	Assert.equal(result.status, "UNAUTHORIZED", "not owned")
 	Assert.equal(lastReason(env, "security"), "cant not owned", "logged as a security event")
 	Assert.isNil(h.profile().cants.equipped, "nothing equipped")
@@ -160,9 +160,9 @@ suite:case("a Cant the player does not own is UNAUTHORIZED", function(env)
 end)
 
 suite:case("duplicate equips and empty unequips are refused", function(env)
-	local h = harness(env, { "cant-nearness" })
-	Assert.equal(h.send({ slot = "primary", cantId = "cant-nearness" }).status, "OK", "first")
-	Assert.equal(h.send({ slot = "primary", cantId = "cant-nearness" }).status, "REJECTED", "dup")
+	local h = harness(env, { "cant.nearness" })
+	Assert.equal(h.send({ slot = "primary", cantId = "cant.nearness" }).status, "OK", "first")
+	Assert.equal(h.send({ slot = "primary", cantId = "cant.nearness" }).status, "REJECTED", "dup")
 	Assert.equal(lastReason(env), "already equipped", "reason")
 	Assert.equal(#h.mutations, 1, "only one save")
 	Assert.equal(h.send({ slot = "primary" }).status, "OK", "unequip")
@@ -171,9 +171,9 @@ suite:case("duplicate equips and empty unequips are refused", function(env)
 end)
 
 suite:case("a slot without saved state is refused", function(env)
-	local h = harness(env, { "cant-nearness" })
+	local h = harness(env, { "cant.nearness" })
 	Assert.equal(
-		h.send({ slot = "secondary", cantId = "cant-nearness" }).status,
+		h.send({ slot = "secondary", cantId = "cant.nearness" }).status,
 		"REJECTED",
 		"secondary"
 	)
@@ -181,19 +181,19 @@ suite:case("a slot without saved state is refused", function(env)
 end)
 
 suite:case("a combatant mid-action cannot swap Cants", function(env)
-	local h = harness(env, { "cant-nearness" })
+	local h = harness(env, { "cant.nearness" })
 	local id = h.combat:combatantId(1)
 	Assert.isTrue(h.combat.sim:submit(id, { kind = "Attack", sequence = 1 }).ok, "attack")
 	h.combat.sim:step()
-	Assert.equal(h.send({ slot = "primary", cantId = "cant-nearness" }).status, "REJECTED", "busy")
+	Assert.equal(h.send({ slot = "primary", cantId = "cant.nearness" }).status, "REJECTED", "busy")
 	Assert.equal(lastReason(env), "busy", "reason")
 	Assert.isNil(h.profile().cants.equipped, "profile untouched")
 end)
 
 suite:case("a refused save rolls the combat layer back and commits nothing", function(env)
-	local h = harness(env, { "cant-nearness" })
+	local h = harness(env, { "cant.nearness" })
 	h.refuseSaves.value = true
-	local result = h.send({ slot = "primary", cantId = "cant-nearness" })
+	local result = h.send({ slot = "primary", cantId = "cant.nearness" })
 	Assert.equal(result.status, "INTERNAL", "save refused")
 	Assert.isNil(h.profile().cants.equipped, "profile untouched")
 	Assert.isNil(h.combat.cants:equipped(h.combat:combatantId(1)), "combat rolled back")

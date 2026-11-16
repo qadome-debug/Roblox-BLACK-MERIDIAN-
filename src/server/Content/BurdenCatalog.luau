@@ -1,72 +1,90 @@
 --!strict
 -- Burden catalog (BM-069).
 --
--- Typed gameplay definitions for every canonical Burden: where it can be
--- acquired, which Burdens it cannot coexist with, how it stacks, and the
--- gameplay modifiers it applies. Validated against the canonical content
--- registry like the Cant and Verse catalogs:
+-- FROM THE DESIGN (22-part report, approved 2026-11-16): a Burden is tied
+-- to a Cant. It is not a generic pickup and it does not stack. A Cant has
+-- one default Burden and may have alternate Burdens reached through
+-- mastery. For Nearness the default is Unwanted Company and the alternate
+-- mastery Burden is Long Way Home.
+--
+-- This catalog therefore records, for every canonical Burden:
+--
+--   * the Cant it belongs to (must match the content registry);
+--   * its role: "default" or "mastery";
+--   * the server effect that implements it and that effect's parameters.
+--
+-- Validation:
 --
 --   * every canonical Burden has exactly one definition, and no definition
 --     names a Burden the registry does not know;
---   * incompatibilities are canonical, symmetric and never self-referential;
---   * modifiers target known derived stats and stay inside tighter bounds
---     than the general attribute limits, so no Burden can trivialise or
---     zero out a stat.
+--   * a Cant has at most one default Burden, and a mastery Burden only
+--     exists beside a default;
+--   * an effect is a name, never a function, and parameters are a small
+--     set of bounded finite numbers, so a definition is plain data;
+--   * a canonical Burden names its effect. A provisional one may leave it
+--     unset, and then it has no gameplay consequence at all.
 --
--- SCHEMA ASSUMPTIONS (not canon): the acquisition sources, stacking
--- (`maxStacks`; the saved profile keeps a plain list of active Burdens) and
--- stat modifiers as the only kind of consequence are this catalog's
--- working shape until the design states what Burdens do.
+-- NOT YET ESTABLISHED: the numbers behind Unwanted Company and Long Way
+-- Home, what mastery requires, and the machine IDs of both Burdens. Until
+-- the IDs are approved the production catalog is empty and valid; see
+-- docs/id-proposals.md and docs/decision-sheet.md.
 --
--- `resolve` is the entry point for client input. The canonical Burden
--- list is not yet in the design inventory, so the production catalog is
--- empty and valid.
+-- An earlier version of this catalog assumed Burdens were acquired from
+-- Descents, bosses, quests or Waymarks, stacked up to five times and only
+-- changed stats. None of that is in the design; it was removed.
+--
+-- `resolve` is the entry point for client input.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
 
-local Attributes = require(ServerScriptService.Server.Combat.Attributes)
 local Canon = require(ReplicatedStorage.Shared.Catalogs.Canon)
 local ContentRegistry = require(ReplicatedStorage.Shared.Catalogs.ContentRegistry)
 
-export type Source = "descent" | "boss" | "quest" | "waymark"
-
-export type Modifier = { stat: Attributes.DerivedKey, add: number?, mul: number? }
+export type Role = "default" | "mastery"
 
 export type Definition = {
 	id: string,
-	sources: { Source },
-	incompatibleWith: { string },
-	maxStacks: number,
-	modifiers: { Modifier },
+	cantId: string,
+	role: Role,
+	effect: string?,
+	params: { [string]: number }?,
 	mechanics: "canonical" | "provisional",
 }
+
+export type CantBurdens = { default: string?, mastery: { string } }
 
 export type Catalog = {
 	get: (self: Catalog, id: string) -> Definition?,
 	resolve: (self: Catalog, value: unknown) -> string?,
 	ids: (self: Catalog) -> { string },
-	compatible: (self: Catalog, held: { string }, candidate: string) -> (boolean, string?),
-	-- Attribute modifiers for a held set, `stacks[id]` copies each, clamped
-	-- to the definition's maxStacks.
-	modifiersFor: (self: Catalog, stacks: { [string]: number }) -> { Attributes.Modifier },
+	-- The Burdens of one Cant.
+	forCant: (self: Catalog, cantId: string) -> CantBurdens,
+	belongsTo: (self: Catalog, burdenId: string, cantId: string) -> boolean,
+	-- The Burden in force for an equipped Cant. `chosen` is the player's
+	-- saved choice of a mastery Burden; it is honoured only when it belongs
+	-- to the Cant and the server says mastery is unlocked. Otherwise the
+	-- default applies. Returns nil when the Cant has no Burden defined.
+	activeFor: (
+		self: Catalog,
+		cantId: string,
+		chosen: string?,
+		masteryUnlocked: boolean
+	) -> string?,
 }
 
 local BurdenCatalog = {}
 
-BurdenCatalog.MAX_ADD_FRACTION = 0.5 -- of the stat's cap
-BurdenCatalog.MIN_MUL = 0.5
-BurdenCatalog.MAX_MUL = 1.5
-BurdenCatalog.MAX_STACKS = 5
-BurdenCatalog.MAX_MODIFIERS = 4
+BurdenCatalog.MAX_PARAMS = 8
+BurdenCatalog.MAX_PARAM = 1000000
+BurdenCatalog.EFFECT_PATTERN = "^[a-z][a-z0-9_]*$"
+BurdenCatalog.MAX_EFFECT_BYTES = 48
 
-local SOURCES: { [string]: boolean } = { descent = true, boss = true, quest = true, waymark = true }
 local FIELDS: { [string]: boolean } = {
 	id = true,
-	sources = true,
-	incompatibleWith = true,
-	maxStacks = true,
-	modifiers = true,
+	cantId = true,
+	role = true,
+	effect = true,
+	params = true,
 	mechanics = true,
 }
 
@@ -94,7 +112,11 @@ function BurdenCatalog.validate(definitions: unknown, canon: ContentRegistry.Reg
 	if not isArray(definitions) then
 		return { "definitions must be an array" }
 	end
+
 	local defined: { [string]: { [string]: any } } = {}
+	local defaults: { [string]: string } = {}
+	local mastery: { [string]: { string } } = {}
+
 	for index, raw in definitions :: { any } do
 		if type(raw) ~= "table" or type(raw.id) ~= "string" then
 			problem("definition " .. index .. ": needs a string id")
@@ -107,7 +129,8 @@ function BurdenCatalog.validate(definitions: unknown, canon: ContentRegistry.Reg
 				problem(id .. ": unknown field " .. tostring(key))
 			end
 		end
-		if registry:resolve("burden", id) == nil then
+		local entry = registry:getBurden(id)
+		if entry == nil then
 			problem(id .. ": not a canonical Burden ID")
 			continue
 		end
@@ -117,104 +140,72 @@ function BurdenCatalog.validate(definitions: unknown, canon: ContentRegistry.Reg
 		end
 		defined[id] = def
 
-		if not isArray(def.sources) or #def.sources == 0 then
-			problem(id .. ": sources must be a non-empty list")
+		if def.cantId ~= entry.cantId then
+			problem(id .. ": cantId must be " .. entry.cantId .. " (registry)")
+		end
+
+		if def.role == "default" then
+			local existing = defaults[entry.cantId]
+			if existing ~= nil then
+				problem(
+					id .. ": " .. entry.cantId .. " already has the default Burden " .. existing
+				)
+			else
+				defaults[entry.cantId] = id
+			end
+		elseif def.role == "mastery" then
+			local list = mastery[entry.cantId] or {}
+			table.insert(list, id)
+			mastery[entry.cantId] = list
 		else
-			local seen: { [string]: boolean } = {}
-			for _, source in def.sources do
-				if not SOURCES[source] then
-					problem(id .. ": unknown source " .. tostring(source))
-				elseif seen[source] then
-					problem(id .. ": source " .. source .. " listed twice")
-				end
-				seen[source] = true
+			problem(id .. ": role must be default or mastery")
+		end
+
+		local effect = def.effect
+		if effect ~= nil then
+			if
+				type(effect) ~= "string"
+				or #effect > BurdenCatalog.MAX_EFFECT_BYTES
+				or string.match(effect, BurdenCatalog.EFFECT_PATTERN) == nil
+			then
+				problem(id .. ": effect must be a lower-case effect name")
 			end
 		end
 
-		if not isArray(def.incompatibleWith) then
-			problem(id .. ": incompatibleWith must be a list")
-		else
-			for _, other in def.incompatibleWith do
-				if other == id then
-					problem(id .. ": cannot be incompatible with itself")
-				elseif registry:resolve("burden", other) == nil then
-					problem(
-						id
-							.. ": incompatibleWith "
-							.. tostring(other)
-							.. " is not a canonical Burden"
-					)
-				end
-			end
-		end
-
-		local stacks = def.maxStacks
-		if
-			type(stacks) ~= "number"
-			or stacks ~= math.floor(stacks)
-			or stacks < 1
-			or stacks > BurdenCatalog.MAX_STACKS
-		then
-			problem(id .. ": maxStacks must be an integer in 1.." .. BurdenCatalog.MAX_STACKS)
-		end
-
-		if not isArray(def.modifiers) or #def.modifiers > BurdenCatalog.MAX_MODIFIERS then
-			problem(id .. ": modifiers must be a list of at most " .. BurdenCatalog.MAX_MODIFIERS)
-		else
-			for i, mod in def.modifiers do
-				local where = id .. ": modifier " .. i
-				if type(mod) ~= "table" or Attributes.CAPS[mod.stat] == nil then
-					problem(where .. " must target a derived stat")
-					continue
-				end
-				for key in mod :: { [string]: any } do
-					if key ~= "stat" and key ~= "add" and key ~= "mul" then
-						problem(where .. ": unknown field " .. tostring(key))
+		local params = def.params
+		if params ~= nil then
+			if type(params) ~= "table" then
+				problem(id .. ": params must be a table of numbers")
+			else
+				local count = 0
+				for key, value in params :: { [any]: any } do
+					count += 1
+					if type(key) ~= "string" then
+						problem(id .. ": params keys must be strings")
+					elseif not isFinite(value) or math.abs(value) > BurdenCatalog.MAX_PARAM then
+						problem(id .. ": param " .. key .. " must be a bounded finite number")
 					end
 				end
-				if mod.add == nil and mod.mul == nil then
-					problem(where .. ": needs add or mul")
+				if count > BurdenCatalog.MAX_PARAMS then
+					problem(id .. ": at most " .. BurdenCatalog.MAX_PARAMS .. " params")
 				end
-				local cap = Attributes.CAPS[mod.stat].max * BurdenCatalog.MAX_ADD_FRACTION
-				if mod.add ~= nil and (not isFinite(mod.add) or math.abs(mod.add) > cap) then
-					problem(where .. ": add must be finite and within +/-" .. cap)
-				end
-				if
-					mod.mul ~= nil
-					and (
-						not isFinite(mod.mul)
-						or mod.mul < BurdenCatalog.MIN_MUL
-						or mod.mul > BurdenCatalog.MAX_MUL
-					)
-				then
-					problem(
-						where
-							.. ": mul must be within "
-							.. BurdenCatalog.MIN_MUL
-							.. ".."
-							.. BurdenCatalog.MAX_MUL
-					)
+				if effect == nil and count > 0 then
+					problem(id .. ": params without an effect")
 				end
 			end
 		end
 
 		if def.mechanics ~= "canonical" and def.mechanics ~= "provisional" then
 			problem(id .. ": mechanics must be canonical or provisional")
+		elseif def.mechanics == "canonical" and effect == nil then
+			problem(id .. ": a canonical Burden names its effect")
 		end
 	end
 
-	for id, def in defined do
-		if isArray(def.incompatibleWith) then
-			for _, other in def.incompatibleWith do
-				local otherDef = defined[other]
-				if
-					otherDef ~= nil
-					and isArray(otherDef.incompatibleWith)
-					and not table.find(otherDef.incompatibleWith, id)
-				then
-					problem(id .. ": incompatible with " .. other .. " but not the other way round")
-				end
-			end
+	for cantId, list in mastery do
+		if defaults[cantId] == nil then
+			table.sort(list)
+			problem(list[1] .. ": a mastery Burden needs " .. cantId .. " to have a default Burden")
 		end
 	end
 
@@ -245,12 +236,29 @@ function BurdenCatalog.build(definitions: { Definition }, canon: ContentRegistry
 	deepFreeze(definitions)
 	local byId: { [string]: Definition } = {}
 	local ids: { string } = {}
+	local byCant: { [string]: CantBurdens } = {}
 	for _, def in definitions do
 		byId[def.id] = def
 		table.insert(ids, def.id)
+		local entry = byCant[def.cantId]
+		if entry == nil then
+			entry = { default = nil, mastery = {} }
+			byCant[def.cantId] = entry
+		end
+		if def.role == "default" then
+			entry.default = def.id
+		else
+			table.insert(entry.mastery, def.id)
+		end
 	end
 	table.sort(ids)
 	table.freeze(ids)
+	for _, entry in byCant do
+		table.sort(entry.mastery)
+		table.freeze(entry.mastery)
+		table.freeze(entry)
+	end
+	local NONE: CantBurdens = table.freeze({ default = nil, mastery = table.freeze({}) }) :: any
 
 	local catalog = {} :: Catalog
 
@@ -269,58 +277,34 @@ function BurdenCatalog.build(definitions: { Definition }, canon: ContentRegistry
 		return ids
 	end
 
-	function catalog:compatible(held: { string }, candidate: string): (boolean, string?)
-		local def = byId[candidate]
-		if def == nil then
-			return false, "unknown burden"
-		end
-		for _, other in held do
-			if table.find(def.incompatibleWith, other) then
-				return false, "incompatible burden"
-			end
-		end
-		return true, nil
+	function catalog:forCant(cantId: string): CantBurdens
+		return byCant[cantId] or NONE
 	end
 
-	function catalog:modifiersFor(stacks: { [string]: number }): { Attributes.Modifier }
-		local out: { Attributes.Modifier } = {}
-		local held: { string } = {}
-		for id in stacks do
-			table.insert(held, id)
+	function catalog:belongsTo(burdenId: string, cantId: string): boolean
+		local def = byId[burdenId]
+		return def ~= nil and def.cantId == cantId
+	end
+
+	function catalog:activeFor(cantId: string, chosen: string?, masteryUnlocked: boolean): string?
+		local entry = byCant[cantId]
+		if entry == nil then
+			return nil
 		end
-		table.sort(held)
-		for _, id in held do
-			local def = byId[id]
-			local count = stacks[id]
-			if def == nil or type(count) ~= "number" or count < 1 then
-				continue
-			end
-			count = math.min(math.floor(count), def.maxStacks)
-			for i, mod in def.modifiers do
-				local entry: Attributes.Modifier = { id = id .. ":" .. i, stat = mod.stat }
-				if mod.add ~= nil then
-					entry.add = math.clamp(
-						mod.add * count,
-						-Attributes.MAX_MODIFIER_ADD,
-						Attributes.MAX_MODIFIER_ADD
-					)
-				end
-				if mod.mul ~= nil then
-					entry.mul = math.clamp(
-						mod.mul ^ count,
-						Attributes.MIN_MODIFIER_MUL,
-						Attributes.MAX_MODIFIER_MUL
-					)
-				end
-				table.insert(out, entry)
+		if chosen ~= nil and masteryUnlocked == true then
+			local def = byId[chosen]
+			if def ~= nil and def.cantId == cantId and def.role == "mastery" then
+				return chosen
 			end
 		end
-		return out
+		return entry.default
 	end
 
 	return table.freeze(catalog) :: any
 end
 
+-- Empty until the machine IDs of Unwanted Company and Long Way Home are
+-- approved and registered.
 local PRODUCTION: { Definition } = {}
 local production: Catalog? = nil
 

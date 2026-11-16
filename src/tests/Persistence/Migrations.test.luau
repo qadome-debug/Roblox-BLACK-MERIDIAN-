@@ -85,8 +85,8 @@ suite:case("future schemas are refused without rewriting", function()
 	local result = migrator:migrate({ schemaVersion = 4, coins = 1 })
 	Assert.isNil(result.profile, "no profile")
 	Assert.contains(result.error :: string, "schema 4 but this server supports up to 3", "reason")
-	local prod = Migrations.production():migrate({ schemaVersion = 3 })
-	Assert.isNil(prod.profile, "production refuses v3 while current is v2")
+	local prod = Migrations.production():migrate({ schemaVersion = 4 })
+	Assert.isNil(prod.profile, "production refuses v4 while current is v3")
 end)
 
 suite:case("gaps, failures and bad output are refused", function()
@@ -191,6 +191,51 @@ suite:case("chains are validated at construction", function()
 			1
 		)
 	end, "past the current version")
+end)
+
+suite:case("v2 to v3 carries the old Nearness ID over and touches nothing else", function()
+	local old: any = ProfileSchema.default()
+	old.schemaVersion = 2
+	old.revision = 41
+	old.cants.unlocked = { ["cant-nearness"] = true }
+	old.cants.verses = { ["cant-nearness"] = {} }
+	old.cants.equipped = "cant-nearness"
+	old.balances = { ["currency-test"] = 7 }
+	old.receipts.permanent["p:quest:q1:reward-x"] = true
+	old.receipts.archives = { "p:1:archive:1" }
+
+	local result = Migrations.production():migrate(old)
+	Assert.notNil(result.profile, "migrated: " .. tostring(result.error))
+	local now: any = result.profile
+	Assert.deepEqual(result.applied, { 3 }, "one step applied")
+	Assert.equal(now.schemaVersion, 3, "version")
+	Assert.deepEqual(now.cants.unlocked, { ["cant.nearness"] = true }, "ownership kept")
+	Assert.deepEqual(now.cants.verses, { ["cant.nearness"] = {} }, "Verse map kept")
+	Assert.equal(now.cants.equipped, "cant.nearness", "equipped Cant kept")
+	Assert.equal(now.revision, 41, "revision untouched")
+	Assert.equal(now.balances["currency-test"], 7, "balances untouched")
+	Assert.equal(now.receipts.permanent["p:quest:q1:reward-x"], true, "receipts untouched")
+	Assert.deepEqual(now.receipts.archives, { "p:1:archive:1" }, "archives untouched")
+	Assert.count(ProfileSchema.validate(now), 0, "valid under the current schema")
+	Assert.equal(old.cants.equipped, "cant-nearness", "the input is not modified")
+
+	-- From v1 both steps run in order.
+	local v1: any = ProfileSchema.default()
+	v1.schemaVersion = 1
+	v1.receipts.archives = nil
+	v1.cants.unlocked = { ["cant-nearness"] = true }
+	v1.cants.verses = { ["cant-nearness"] = {} }
+	local fromV1 = Migrations.production():migrate(v1)
+	Assert.deepEqual(fromV1.applied, { 2, 3 }, "two steps")
+	Assert.count(ProfileSchema.validate(fromV1.profile :: any), 0, "valid")
+
+	-- A profile already on v3 is returned as it is.
+	local current: any = ProfileSchema.default()
+	current.cants.unlocked = { ["cant.nearness"] = true }
+	current.cants.verses = { ["cant.nearness"] = {} }
+	local same = Migrations.production():migrate(current)
+	Assert.deepEqual(same.applied, {}, "nothing to do")
+	Assert.deepEqual(same.profile, current, "unchanged")
 end)
 
 return suite:cases()

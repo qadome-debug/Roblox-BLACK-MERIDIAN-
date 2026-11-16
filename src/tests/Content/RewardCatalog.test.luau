@@ -24,7 +24,7 @@ local function good(): { RewardCatalog.Definition }
 			kind = "permanent",
 			sources = { "quest" },
 			grants = {
-				cants = { "cant-nearness" },
+				cants = { "cant.nearness" },
 				items = { { itemId = "item-test", quantity = 2 } },
 			},
 		},
@@ -94,10 +94,10 @@ suite:case("arbitrary and malformed definitions are rejected", function()
 	defs[2].grants.items[1].quantity = 1000
 	expectError(defs, "item quantity must be an integer")
 	defs = good()
-	defs[2].grants.cants = { "cant-made-up" }
+	defs[2].grants.cants = { "cant.made_up" }
 	expectError(defs, "unknown cant")
 	defs = good()
-	defs[2].grants.waymarks = { "cant-nearness" }
+	defs[2].grants.waymarks = { "cant.nearness" }
 	expectError(defs, "unknown waymark")
 	defs = good()
 	defs[1].grants.robux = 5

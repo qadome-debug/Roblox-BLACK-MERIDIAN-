@@ -1,7 +1,8 @@
 --!strict
--- BM-063: Cant activation, cooldown, resource and combat-state cases. All
--- outcomes are resolved by the server simulation.
+-- BM-063: a Cant is an equipped discipline with no ability of its own.
+-- Equipping is server-owned, catalog-checked and refused mid-action.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -10,161 +11,89 @@ local CantCatalog = require(ServerScriptService.Server.Content.CantCatalog)
 local Cants = require(ServerScriptService.Server.Combat.Cants)
 local Simulation = require(ServerScriptService.Server.Combat.Simulation)
 local Suite = require(ServerStorage.Tests.Support.Suite)
+local Vec3 = require(ReplicatedStorage.Shared.Sim.Vec3)
 
 local suite = Suite.new("Cants")
 
-type Setup = { sim: Simulation.Simulation, cants: Cants.Layer, effects: { string } }
+local BASE = { vigor = 10, might = 10, grace = 10, will = 10 }
 
-local function pos(x: number, y: number, z: number)
-	return { x = x, y = y, z = z }
-end
-
--- A test kit: 10-step cooldown, 30 stamina, usable while Idle.
-local function setup(env: Suite.Env): Setup
-	local sim = Simulation.new({ logger = env.logger, rng = env.rng:fork("combat") })
-	local effects: { string } = {}
+local function setup(env: Suite.Env)
+	local sim = Simulation.new({ logger = env.logger, rng = env.rng })
+	sim:addCombatant({ id = "a", team = "players", base = BASE, position = Vec3.new(0, 0, 0) })
+	local known: { [string]: boolean } = { ["cant.test"] = true, ["cant.other"] = true }
 	local cants = Cants.attach(sim, {
-		kits = {
-			["cant-test"] = {
-				cooldownSteps = 10,
-				cost = { pool = "stamina", amount = 30 },
-				usableIn = { "Idle" },
-				effect = function(ctx: Cants.Context)
-					table.insert(effects, ctx.caster.id .. "@" .. ctx.step)
-				end,
-				provisional = false,
-			},
-		},
+		resolve = function(value: unknown): string?
+			return if type(value) == "string" and known[value] then value else nil
+		end,
 	})
-	sim:addCombatant({ id = "a", team = "players", position = pos(0, 0, 0) })
-	return { sim = sim, cants = cants, effects = effects }
+	return sim, cants
 end
 
 local function reason(outcome: any): string?
 	return if outcome.ok then nil else outcome.reason
 end
 
-suite:case("an equipped Cant activates, spends its cost and runs its effect", function(env)
-	local s = setup(env)
-	Assert.equal(reason(s.cants:equip("a", "cant-test")), nil, "equipped")
-	local a = s.sim:get("a") :: any
-	local before = a.resources.stamina
-	Assert.equal(reason(s.cants:activate("a")), nil, "activated")
-	Assert.equal(a.resources.stamina, before - 30, "cost spent")
-	Assert.deepEqual(s.effects, { "a@0" }, "effect ran once on the server")
-	local events = s.sim:drainEvents()
-	local saw = false
-	for _, e in events do
-		if e.kind == "cant_activated" and (e.data :: any).cantId == "cant-test" then
-			saw = true
-		end
+suite:case("a known Cant equips, swaps and unequips", function(env)
+	local _, cants = setup(env)
+	Assert.isNil(cants:equipped("a"), "nothing equipped at first")
+	Assert.isTrue(cants:equip("a", "cant.test").ok, "equip")
+	Assert.equal(cants:equipped("a"), "cant.test", "equipped")
+	Assert.isTrue(cants:equip("a", "cant.other").ok, "swap")
+	Assert.equal(cants:equipped("a"), "cant.other", "swapped")
+	Assert.isTrue(cants:equip("a", nil).ok, "unequip")
+	Assert.isNil(cants:equipped("a"), "cleared")
+end)
+
+suite:case("unknown Cants and unknown combatants are refused", function(env)
+	local _, cants = setup(env)
+	Assert.equal(reason(cants:equip("a", "cant.invented")), "unknown cant", "not in the catalog")
+	Assert.isNil(cants:equipped("a"), "nothing equipped")
+	Assert.equal(reason(cants:equip("ghost", "cant.test")), "unknown combatant", "no combatant")
+	Assert.equal(reason(cants:equip("ghost", nil)), "unknown combatant", "no combatant to clear")
+end)
+
+suite:case("a discipline cannot be swapped in the middle of an action", function(env)
+	local sim, cants = setup(env)
+	Assert.isTrue(cants:equip("a", "cant.test").ok, "equip while idle")
+	Assert.isTrue(sim:submit("a", { kind = "Attack", sequence = 1 }).ok, "attack")
+	sim:step()
+	Assert.equal(reason(cants:equip("a", "cant.other")), "busy", "refused mid-action")
+	Assert.equal(cants:equipped("a"), "cant.test", "unchanged")
+end)
+
+suite:case("forget clears the combatant's Cant", function(env)
+	local _, cants = setup(env)
+	cants:equip("a", "cant.test")
+	cants:forget("a")
+	Assert.isNil(cants:equipped("a"), "forgotten")
+end)
+
+suite:case("a Cant has no ability of its own", function(env)
+	local _, cants = setup(env)
+	-- The layer offers equipping only. There is no activation, cooldown or
+	-- cost on a Cant: those belong to its Verses.
+	local surface: { string } = {}
+	for name in cants :: any do
+		table.insert(surface, name)
 	end
-	Assert.isTrue(saw, "activation event emitted")
+	table.sort(surface)
+	Assert.deepEqual(surface, { "equip", "equipped", "forget" }, "the whole layer")
+	Assert.isNil((Cants :: any).PRODUCTION_KITS, "no activation kits")
 end)
 
-suite:case("cooldown is counted in steps and swapping does not reset it", function(env)
-	local s = setup(env)
-	s.cants:equip("a", "cant-test")
-	s.cants:activate("a")
-	Assert.equal(s.cants:cooldownRemaining("a"), 10, "full cooldown")
-	for _ = 1, 9 do
-		s.sim:step()
-	end
-	Assert.equal(reason(s.cants:activate("a")), "cooldown", "one step early")
-	s.cants:equip("a", nil)
-	s.cants:equip("a", "cant-test")
-	Assert.equal(reason(s.cants:activate("a")), "cooldown", "re-equip keeps the timer")
-	s.sim:step()
-	Assert.equal(s.cants:cooldownRemaining("a"), 0, "ready")
-	Assert.equal(reason(s.cants:activate("a")), nil, "activates on the exact step")
-	Assert.equal(#s.effects, 2, "two effects")
-end)
-
-suite:case("activation without resources fails and spends nothing", function(env)
-	local s = setup(env)
-	s.cants:equip("a", "cant-test")
-	local a = s.sim:get("a") :: any
-	a.resources.stamina = 29
-	Assert.equal(reason(s.cants:activate("a")), "cannot afford", "too poor")
-	Assert.equal(a.resources.stamina, 29, "nothing spent")
-	Assert.equal(s.cants:cooldownRemaining("a"), 0, "no cooldown started")
-	Assert.equal(#s.effects, 0, "no effect")
-end)
-
-suite:case("combat state gates activation", function(env)
-	local s = setup(env)
-	s.cants:equip("a", "cant-test")
-	Assert.isTrue(s.sim:submit("a", { kind = "Attack", sequence = 1 }).ok, "queued attack")
-	s.sim:step()
-	Assert.equal((s.sim:get("a") :: any).action.state, "Attacking", "attacking")
-	Assert.equal(reason(s.cants:activate("a")), "not usable now", "not while attacking")
-	Assert.equal(reason(s.cants:equip("a", "cant-test")), "busy", "no equip mid-action")
-	s.sim:damage("a", 100000)
-	s.sim:step()
-	Assert.equal(reason(s.cants:activate("a")), "dead", "never while dead")
-	Assert.equal(#s.effects, 0, "no effect")
-end)
-
-suite:case("unknown, unavailable and unequipped Cants are refused", function(env)
-	local s = setup(env)
-	Assert.equal(reason(s.cants:activate("a")), "no cant equipped", "nothing equipped")
-	Assert.equal(reason(s.cants:equip("a", "cant-fake")), "cant not available", "no kit")
-	Assert.equal(reason(s.cants:equip("ghost", "cant-test")), "unknown combatant", "ghost")
-	Assert.equal(reason(s.cants:activate("ghost")), "unknown combatant", "ghost activate")
-	local sim = Simulation.new({ logger = env.logger, rng = env.rng:fork("c2") })
-	sim:addCombatant({ id = "a", team = "players" })
+suite:case("the four launch Cants equip through the production catalog", function(env)
+	local sim = Simulation.new({ logger = env.logger, rng = env.rng })
+	sim:addCombatant({ id = "a", team = "players", base = BASE, position = Vec3.new(0, 0, 0) })
 	local catalog = CantCatalog.production()
-	local layer = Cants.attach(sim, {
-		kits = Cants.PRODUCTION_KITS,
-		resolve = function(value)
+	local cants = Cants.attach(sim, {
+		resolve = function(value: unknown): string?
 			return catalog:resolve(value)
 		end,
 	})
-	Assert.equal(reason(layer:equip("a", "cant-invented")), "unknown cant", "catalog refuses")
-	Assert.equal(reason(layer:equip("a", "cant-nearness")), nil, "Nearness equips")
-	Assert.equal(reason(layer:activate("a")), nil, "Nearness activates")
-end)
-
-suite:case("invalid kits are refused at attach", function(env)
-	local sim = Simulation.new({ logger = env.logger, rng = env.rng:fork("c3") })
-	local function kitWith(overrides: { [string]: any }): any
-		local kit: { [string]: any } = {
-			cooldownSteps = 10,
-			usableIn = { "Idle" },
-			effect = function() end,
-			provisional = true,
-		}
-		for k, v in overrides do
-			kit[k] = v
-		end
-		return kit
+	for _, cantId in { "cant.nearness", "cant.embers", "cant.second_voice", "cant.still_water" } do
+		Assert.isTrue(cants:equip("a", cantId).ok, cantId .. " is a known discipline")
 	end
-	Assert.equal(#Cants.validateKit(kitWith({})), 0, "base kit valid")
-	Assert.isTrue(#Cants.validateKit(kitWith({ cooldownSteps = -1 })) > 0, "negative cooldown")
-	Assert.isTrue(#Cants.validateKit(kitWith({ cooldownSteps = 1.5 })) > 0, "fractional")
-	Assert.isTrue(
-		#Cants.validateKit(kitWith({ cost = { pool = "mana", amount = 5 } })) > 0,
-		"unknown pool"
-	)
-	Assert.isTrue(
-		#Cants.validateKit(kitWith({ cost = { pool = "stamina", amount = 0 / 0 } })) > 0,
-		"NaN cost"
-	)
-	Assert.isTrue(#Cants.validateKit(kitWith({ usableIn = { "Dead" } })) > 0, "dead usable")
-	Assert.isTrue(#Cants.validateKit(kitWith({ usableIn = {} })) > 0, "no states")
-	Assert.throws(function()
-		Cants.attach(sim, { kits = { ["cant-x"] = kitWith({ effect = 5 }) } })
-	end, "is invalid")
-end)
-
-suite:case("every production kit names a catalog Cant and validates", function()
-	local catalog = CantCatalog.production()
-	for cantId, kit in Cants.PRODUCTION_KITS do
-		Assert.notNil(catalog:resolve(cantId), cantId .. " in catalog")
-		Assert.deepEqual(Cants.validateKit(kit), {}, cantId .. " valid")
-		local def = catalog:get(cantId) :: CantCatalog.Definition
-		Assert.equal(kit.provisional, def.mechanics == "provisional", "provisional flags agree")
-	end
+	Assert.equal(reason(cants:equip("a", "cant-nearness")), "unknown cant", "the old ID is gone")
 end)
 
 return suite:cases()

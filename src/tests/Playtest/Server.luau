@@ -13,9 +13,11 @@
 --     state for assertions.
 --
 -- Shortcuts this harness takes are test scaffolding, not gameplay:
--- "grantNearness" stands in for the starter Cant selection flow that does
--- not exist yet, and "activateCant" calls the server activation directly
--- because no client request for activating a Cant has been specified.
+-- "grantNearness" and "grantNearnessVerses" stand in for the introductory
+-- story that grants Nearness, which does not exist yet; which Verses come
+-- with Nearness is not yet established. "addDissonance" and
+-- "recoverDissonance" stand in for the world sources (Verses, areas,
+-- anchors, camps) that do not exist yet.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -79,7 +81,7 @@ function Playtest.start(services: { [string]: any })
 		}
 		if profile ~= nil then
 			out.equippedProfile = profile.cants.equipped
-			out.ownsNearness = profile.cants.unlocked["cant-nearness"] == true
+			out.ownsNearness = profile.cants.unlocked["cant.nearness"] == true
 		end
 		local stored =
 			dataStores:peek(ProfileService.STORE_NAME .. "/" .. SCOPE, profiles:keyFor(userId))
@@ -91,9 +93,10 @@ function Playtest.start(services: { [string]: any })
 			local id = combat:combatantId(userId)
 			local me = combat.sim:get(id)
 			out.equippedCombat = combat.cants:equipped(id)
-			out.cantCooldown = combat.cants:cooldownRemaining(id)
 			out.dissonance = combat.dissonance:value(id)
 			out.dissonanceLevel = combat.dissonance:level(id)
+			out.dissonanceBand = combat.dissonance:band(id).name
+			out.closeStepCooldown = combat.verses:cooldownRemaining(id, "near.close_step")
 			if me ~= nil then
 				out.stamina = me.resources.stamina
 				out.health = me.resources.health
@@ -119,25 +122,40 @@ function Playtest.start(services: { [string]: any })
 		local ok, reason = profiles:mutate(player.UserId, {
 			id = "playtest-grant-nearness",
 			apply = function(profile: any): any
-				if profile.cants.unlocked["cant-nearness"] == true then
+				if profile.cants.unlocked["cant.nearness"] == true then
 					return nil
 				end
 				local nextProfile = table.clone(profile)
 				nextProfile.cants = table.clone(profile.cants)
 				nextProfile.cants.unlocked = table.clone(profile.cants.unlocked)
-				nextProfile.cants.unlocked["cant-nearness"] = true
+				nextProfile.cants.unlocked["cant.nearness"] = true
 				nextProfile.cants.verses = table.clone(profile.cants.verses)
-				nextProfile.cants.verses["cant-nearness"] = {}
+				nextProfile.cants.verses["cant.nearness"] = {}
 				return nextProfile
 			end,
 		})
 		return { ok = ok, reason = reason }
 	end
 
-	-- No client request for activating a Cant is specified; call the server
-	-- activation directly.
-	commands.activateCant = function(player)
-		return combat.cants:activate(combat:combatantId(player.UserId))
+	-- Unlocks the four Nearness Verses in the profile. Harness only: which
+	-- Verses a player has when Nearness is acquired is not established.
+	commands.grantNearnessVerses = function(player)
+		local ok, reason = profiles:mutate(player.UserId, {
+			id = "playtest-grant-nearness-verses",
+			apply = function(profile: any): any
+				local nextProfile = table.clone(profile)
+				nextProfile.cants = table.clone(profile.cants)
+				nextProfile.cants.verses = table.clone(profile.cants.verses)
+				nextProfile.cants.verses["cant.nearness"] = {
+					["near.close_step"] = true,
+					["near.draw_near"] = true,
+					["near.between_us"] = true,
+					["near.no_farther"] = true,
+				}
+				return nextProfile
+			end,
+		})
+		return { ok = ok, reason = reason }
 	end
 
 	commands.setStamina = function(player, amount)
@@ -150,7 +168,17 @@ function Playtest.start(services: { [string]: any })
 
 	commands.addDissonance = function(player, amount)
 		return {
-			value = combat.dissonance:add(combat:combatantId(player.UserId), amount, "playtest"),
+			value = combat.dissonance:add(
+				combat:combatantId(player.UserId),
+				amount,
+				"unstableArea"
+			),
+		}
+	end
+
+	commands.recoverDissonance = function(player, amount)
+		return {
+			value = combat.dissonance:recover(combat:combatantId(player.UserId), amount, "anchor"),
 		}
 	end
 

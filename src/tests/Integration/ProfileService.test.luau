@@ -224,7 +224,7 @@ suite:case("mutate changes the live profile, saves it, and refuses invalid resul
 			end,
 		}
 	end
-	local ok, reason = service:mutate(1, setEquipped("cant-nearness"))
+	local ok, reason = service:mutate(1, setEquipped("cant.nearness"))
 	Assert.isFalse(ok, "equipping an unowned Cant fails the schema")
 	Assert.equal(reason, "invalid profile", "reason")
 	Assert.isNil((service:profileFor(1) :: any).cants.equipped, "live profile unchanged")
@@ -234,18 +234,18 @@ suite:case("mutate changes the live profile, saves it, and refuses invalid resul
 		apply = function(profile: any): any
 			local nextProfile = table.clone(profile)
 			nextProfile.cants = table.clone(profile.cants)
-			nextProfile.cants.unlocked = { ["cant-nearness"] = true }
-			nextProfile.cants.verses = { ["cant-nearness"] = {} }
+			nextProfile.cants.unlocked = { ["cant.nearness"] = true }
+			nextProfile.cants.verses = { ["cant.nearness"] = {} }
 			return nextProfile
 		end,
 	}
 	Assert.isTrue((service:mutate(1, unlock :: any)), "unlock")
-	Assert.isTrue((service:mutate(1, setEquipped("cant-nearness"))), "equip")
-	Assert.equal((service:profileFor(1) :: any).cants.equipped, "cant-nearness", "live")
+	Assert.isTrue((service:mutate(1, setEquipped("cant.nearness"))), "equip")
+	Assert.equal((service:profileFor(1) :: any).cants.equipped, "cant.nearness", "live")
 	service:tick()
 	Assert.equal(
 		env.dataStores:peek(storeName(), "p:1").cants.equipped,
-		"cant-nearness",
+		"cant.nearness",
 		"saved by the queue"
 	)
 	Assert.isFalse((service:mutate(2, unlock :: any)), "unknown player refused")

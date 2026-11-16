@@ -146,8 +146,8 @@ local function grantNearness(s: Server, userId: number)
 			apply = function(profile: any): any
 				local nextProfile = table.clone(profile)
 				nextProfile.cants = table.clone(profile.cants)
-				nextProfile.cants.unlocked = { ["cant-nearness"] = true }
-				nextProfile.cants.verses = { ["cant-nearness"] = {} }
+				nextProfile.cants.unlocked = { ["cant.nearness"] = true }
+				nextProfile.cants.verses = { ["cant.nearness"] = {} }
 				return nextProfile
 			end,
 		} :: any
@@ -155,7 +155,7 @@ local function grantNearness(s: Server, userId: number)
 	Assert.isTrue(ok, "granted")
 end
 
-local NEARNESS = { slot = "primary", cantId = "cant-nearness" }
+local NEARNESS = { slot = "primary", cantId = "cant.nearness" }
 
 suite:case("an equipped Cant survives leaving and rejoining the same server", function(env)
 	local s = server(env, "job-a")
@@ -164,14 +164,13 @@ suite:case("an equipped Cant survives leaving and rejoining the same server", fu
 	grantNearness(s, 1)
 	Assert.equal(s.send(p, epoch, "CantEquip", NEARNESS).status, "OK", "equip")
 	local id = s.combat:combatantId(1)
-	Assert.equal(s.combat.cants:equipped(id), "cant-nearness", "mirrored")
+	Assert.equal(s.combat.cants:equipped(id), "cant.nearness", "mirrored")
 	s.leave(p)
 	Assert.isFalse(s.combat:hasPlayer(1), "combatant gone")
 
 	local again = s.join(1)
-	Assert.equal(s.combat.cants:equipped(id), "cant-nearness", "restored from the profile")
+	Assert.equal(s.combat.cants:equipped(id), "cant.nearness", "restored from the profile")
 	Assert.count(env.logged("gameplay", "loadout_restored"), 1, "logged once")
-	Assert.isTrue(s.combat.cants:activate(id).ok, "activation works without re-equipping")
 	local newEpoch = s.hello(again)
 	Assert.notEqual(newEpoch, epoch, "a new session epoch")
 	Assert.equal(
@@ -200,7 +199,7 @@ suite:case("the saved Cant follows the player to another server", function(env)
 	b.join(1)
 	Assert.equal(
 		b.combat.cants:equipped(b.combat:combatantId(1)),
-		"cant-nearness",
+		"cant.nearness",
 		"server b restored it from the store"
 	)
 end)

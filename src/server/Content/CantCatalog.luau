@@ -13,11 +13,17 @@
 --     that Cant;
 --   * unlock references (Waymarks, quests) are canonical IDs.
 --
--- SCHEMA ASSUMPTIONS (not canon): the two slot names, the unlock kinds
--- (starter / waymark / quest) and the exclusion list are this catalog's
--- working shape. The saved profile holds a single equipped Cant. Revise
--- when the design states how many Cants can be equipped and how each is
--- unlocked.
+-- FROM THE DESIGN (approved 2026-11-16): there are two Cant slots. A
+-- player begins with one; Waymark II unlocks the second. Only the first
+-- slot is implemented for the vertical slice, and the saved profile holds
+-- a single equipped Cant. Nearness is acquired during the introductory
+-- story (unlock kind "story"), which is a different moment from earning
+-- Waymark I. How Embers, Second Voice and Still Water are acquired is not
+-- yet established, so their unlock is "undetermined": it can never be
+-- satisfied and is allowed only on a provisional definition.
+--
+-- STILL AN ASSUMPTION: the slot names, the "waymark" and "quest" unlock
+-- kinds, and the exclusion list.
 --
 -- `mechanics` records whether the Cant's mechanical values are canonical
 -- yet. A "provisional" Cant has its rules wired but its tuning waits on the
@@ -37,6 +43,11 @@ export type Slot = "primary" | "secondary"
 
 export type Unlock =
 	{ kind: "starter" }
+	-- Granted by the story through RewardService; ownership is read from
+	-- the profile, never derived from other progress.
+	| { kind: "story" }
+	-- Not yet established by the design. Never unlocks.
+	| { kind: "undetermined" }
 	| { kind: "waymark", waymarkId: string }
 	| { kind: "quest", questId: string }
 
@@ -78,6 +89,8 @@ CantCatalog.SLOTS = table.freeze({ "primary", "secondary" } :: { Slot })
 local SLOT_SET: { [string]: boolean } = { primary = true, secondary = true }
 local UNLOCK_KINDS: { [string]: { [string]: string } } = {
 	starter = {},
+	story = {},
+	undetermined = {},
 	waymark = { waymarkId = "waymark" },
 	quest = { questId = "quest" },
 }
@@ -212,6 +225,9 @@ function CantCatalog.validate(definitions: unknown, canon: ContentRegistry.Regis
 						)
 					end
 				end
+			end
+			if unlock.kind == "undetermined" and def.mechanics ~= "provisional" then
+				problem(where .. ": an undetermined unlock is only allowed on a provisional Cant")
 			end
 			local entry = registry:getCant(id)
 			if entry ~= nil and entry.starterEligible and unlock.kind ~= "starter" then
@@ -427,14 +443,45 @@ function CantCatalog.build(definitions: { Definition }, canon: ContentRegistry.R
 	return table.freeze(catalog) :: any
 end
 
--- The production definitions. Only canonical Cants appear; mechanics stay
--- provisional until the design inventory supplies their values.
+-- The production definitions: the four launch Cants.
 local PRODUCTION: { Definition } = {
 	{
-		id = "cant-nearness",
-		unlock = { kind = "starter" },
-		-- Slot rules for Nearness are not yet in the design inventory; it may
-		-- sit in either slot until they are.
+		id = "cant.nearness",
+		-- Acquired during the introductory story, in Lantern Vault. This is
+		-- not Waymark I, which is earned later, after the required Descent
+		-- objectives and the return with the discovered evidence.
+		unlock = { kind = "story" },
+		slots = { "primary", "secondary" },
+		exclusiveWith = {},
+		verseIds = {
+			"near.close_step",
+			"near.draw_near",
+			"near.between_us",
+			"near.no_farther",
+		},
+		-- The discipline and its Verse list are canon. The Verses carry
+		-- their own status in VerseCatalog.
+		mechanics = "canonical",
+	},
+	{
+		id = "cant.embers",
+		unlock = { kind = "undetermined" },
+		slots = { "primary", "secondary" },
+		exclusiveWith = {},
+		verseIds = {},
+		mechanics = "provisional",
+	},
+	{
+		id = "cant.second_voice",
+		unlock = { kind = "undetermined" },
+		slots = { "primary", "secondary" },
+		exclusiveWith = {},
+		verseIds = {},
+		mechanics = "provisional",
+	},
+	{
+		id = "cant.still_water",
+		unlock = { kind = "undetermined" },
 		slots = { "primary", "secondary" },
 		exclusiveWith = {},
 		verseIds = {},

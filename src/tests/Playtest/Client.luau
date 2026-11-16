@@ -9,8 +9,9 @@
 -- and shown on screen.
 --
 -- A passing run proves the wiring works in the engine. It does not prove a
--- gameplay feature is finished: Nearness, Verses and Dissonance still run
--- on placeholders (see docs/task-log.md).
+-- gameplay feature is finished: the Nearness Verses are registered but not
+-- castable until their values are approved, and Dissonance has its bands
+-- but no approved rates or band effects (see docs/task-log.md).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -155,7 +156,7 @@ return function(net: any, combatState: any)
 		expect(
 			"CantEquip is NOT_READY",
 			"CantEquip",
-			{ slot = "primary", cantId = "cant-nearness" },
+			{ slot = "primary", cantId = "cant.nearness" },
 			"NOT_READY"
 		)
 		expect(
@@ -164,7 +165,7 @@ return function(net: any, combatState: any)
 			{ kind = "Attack", sequence = 1 },
 			"NOT_READY"
 		)
-		expect("VerseCast is NOT_READY", "VerseCast", { verseId = "verse-undefined" }, "NOT_READY")
+		expect("VerseCast is NOT_READY", "VerseCast", { verseId = "none.undefined" }, "NOT_READY")
 		expect(
 			"DissonanceAction is NOT_READY",
 			"DissonanceAction",
@@ -201,31 +202,31 @@ return function(net: any, combatState: any)
 	check("new profile is written to the store on load", fresh.stored == true)
 
 	-- 2. Cant equipping: ownership and invalid requests.
-	local nearness = { slot = "primary", cantId = "cant-nearness" }
+	local nearness = { slot = "primary", cantId = "cant.nearness" }
 	expect("equip an unowned Cant is UNAUTHORIZED", "CantEquip", nearness, "UNAUTHORIZED")
 	check("harness grants Nearness ownership", server("grantNearness").ok == true)
 	expect(
 		"fabricated Cant id is BAD_PAYLOAD",
 		"CantEquip",
-		{ slot = "primary", cantId = "cant-invented" },
+		{ slot = "primary", cantId = "cant.invented" },
 		"BAD_PAYLOAD"
 	)
 	expect(
 		"unknown slot is BAD_PAYLOAD",
 		"CantEquip",
-		{ slot = "tertiary", cantId = "cant-nearness" },
+		{ slot = "tertiary", cantId = "cant.nearness" },
 		"BAD_PAYLOAD"
 	)
 	expect(
 		"extra payload field is BAD_PAYLOAD",
 		"CantEquip",
-		{ slot = "primary", cantId = "cant-nearness", force = true },
+		{ slot = "primary", cantId = "cant.nearness", force = true },
 		"BAD_PAYLOAD"
 	)
 	expect(
 		"unbacked secondary slot is REJECTED",
 		"CantEquip",
-		{ slot = "secondary", cantId = "cant-nearness" },
+		{ slot = "secondary", cantId = "cant.nearness" },
 		"REJECTED"
 	)
 	local afterBad = server("state")
@@ -237,12 +238,12 @@ return function(net: any, combatState: any)
 	local equipped = server("state")
 	check(
 		"profile records the equipped Cant",
-		equipped.equippedProfile == "cant-nearness",
+		equipped.equippedProfile == "cant.nearness",
 		equipped.equippedProfile
 	)
 	check(
 		"combat layer mirrors the equipped Cant",
-		equipped.equippedCombat == "cant-nearness",
+		equipped.equippedCombat == "cant.nearness",
 		equipped.equippedCombat
 	)
 	expect("duplicate equip is REJECTED", "CantEquip", nearness, "REJECTED")
@@ -250,49 +251,35 @@ return function(net: any, combatState: any)
 	local saved = server("state")
 	check(
 		"equipped Cant is saved to the store",
-		saved.storedEquipped == "cant-nearness",
+		saved.storedEquipped == "cant.nearness",
 		saved.storedEquipped
 	)
 
-	-- 3. Cant activation (server call; PLACEHOLDER Nearness kit).
+	-- 3. The Nearness Verses. A Cant has no ability of its own; its Verses
+	-- are the techniques. They are registered with their confirmed
+	-- cooldowns but cannot be cast until costs, cast times and effects are
+	-- approved, so every cast must be refused and change nothing.
+	expect(
+		"a Verse the player has not unlocked is UNAUTHORIZED",
+		"VerseCast",
+		{ verseId = "near.close_step" },
+		"UNAUTHORIZED"
+	)
+	check("harness unlocks the four Nearness Verses", server("grantNearnessVerses").ok == true)
 	local before = server("state")
-	local first = server("activateCant")
+	for _, verseId in { "near.close_step", "near.draw_near", "near.between_us", "near.no_farther" } do
+		expect(
+			verseId .. " is registered but not castable yet",
+			"VerseCast",
+			{ verseId = verseId },
+			"REJECTED"
+		)
+	end
 	local after = server("state")
-	check("activation succeeds (placeholder kit)", first.ok == true, first.reason)
-	check(
-		"activation spends stamina",
-		after.stamina < before.stamina,
-		tostring(before.stamina) .. " -> " .. tostring(after.stamina)
-	)
-	check("activation starts a cooldown", after.cantCooldown > 0, after.cantCooldown)
-	local second = server("activateCant")
-	check(
-		"activation during cooldown is refused",
-		second.ok == false and second.reason == "cooldown",
-		second.reason
-	)
-	check(
-		"activation cue reaches the client",
-		waitFor(2, function()
-			return (cues.cant_activated or 0) == 1
-		end),
-		cues.cant_activated
-	)
-	check(
-		"cooldown expires with server time",
-		waitFor(4, function()
-			return server("state").cantCooldown == 0
-		end)
-	)
-	server("setStamina", 5)
-	local poor = server("activateCant")
-	check(
-		"activation without stamina is refused",
-		poor.ok == false and poor.reason == "cannot afford",
-		poor.reason
-	)
-	check("refused activation starts no cooldown", server("state").cantCooldown == 0)
-	server("setStamina", 100)
+	check("refused casts spend nothing", after.stamina == before.stamina, after.stamina)
+	check("refused casts start no cooldown", after.closeStepCooldown == 0, after.closeStepCooldown)
+	check("refused casts add no Dissonance", after.dissonance == 0, after.dissonance)
+	check("no activation or cast cue exists", (cues.cant_activated or 0) == 0)
 
 	-- 4. Combat input through the dispatcher.
 	expect(
@@ -326,19 +313,19 @@ return function(net: any, combatState: any)
 		end)
 	)
 
-	-- 5. Verse casting. No canonical Verses exist, so only refusals can be
-	-- exercised here; the positive path is covered headless with fixtures.
-	expect("undefined Verse is REJECTED", "VerseCast", { verseId = "verse-undefined" }, "REJECTED")
-	expect("non-verse id is BAD_PAYLOAD", "VerseCast", { verseId = "cant-nearness" }, "BAD_PAYLOAD")
+	-- 5. Malformed Verse requests. The positive path is covered headless
+	-- with fixture Verses until the Nearness Verses are approved.
+	expect("undefined Verse is REJECTED", "VerseCast", { verseId = "none.undefined" }, "REJECTED")
+	expect("non-verse id is BAD_PAYLOAD", "VerseCast", { verseId = "cant.nearness" }, "BAD_PAYLOAD")
 	expect(
 		"empty target is BAD_PAYLOAD",
 		"VerseCast",
-		{ verseId = "verse-undefined", target = "" },
+		{ verseId = "none.undefined", target = "" },
 		"BAD_PAYLOAD"
 	)
 	check("no verse cue was produced", (cues.verse_cast_started or 0) == 0)
 
-	-- 6. Dissonance (PLACEHOLDER thresholds; no canonical actions).
+	-- 6. Dissonance: the design's five bands; no player-triggered actions.
 	expect(
 		"undefined Dissonance action is REJECTED",
 		"DissonanceAction",
@@ -352,25 +339,29 @@ return function(net: any, combatState: any)
 		"BAD_PAYLOAD"
 	)
 	check("client requests did not move the meter", server("state").dissonance == 0)
-	server("addDissonance", 30)
+	server("addDissonance", 39)
+	check("39 is still Stable", server("state").dissonanceBand == "Stable")
+	server("addDissonance", 1)
 	local raised = server("state")
 	check(
-		"server raises the meter and level",
-		raised.dissonance > 25 and raised.dissonanceLevel == 1,
-		raised.dissonance
+		"40 is Noticeable instability",
+		raised.dissonanceBand == "Noticeable instability",
+		raised.dissonanceBand
 	)
 	check(
-		"level change cue reaches the client",
+		"band change cue reaches the client",
 		waitFor(2, function()
-			return (cues.dissonance_level_changed or 0) >= 1
+			return (cues.dissonance_band_changed or 0) >= 1
 		end)
 	)
+	task.wait(1)
 	check(
-		"meter decays after the quiet period",
-		waitFor(6, function()
-			return server("state").dissonance < 25
-		end)
+		"the meter does not decay by itself",
+		server("state").dissonance == 40,
+		server("state").dissonance
 	)
+	server("recoverDissonance", 40)
+	check("recovery returns it to Stable", server("state").dissonanceBand == "Stable")
 
 	-- 7. Simulated rejoin: release and reload the profile, respawn.
 	local rejoin = server("rejoin")
@@ -379,7 +370,7 @@ return function(net: any, combatState: any)
 		"saved Cant is restored into combat after reload",
 		waitFor(10, function()
 			local s = server("state")
-			return s.profileReady and s.inCombat and s.equippedCombat == "cant-nearness"
+			return s.profileReady and s.inCombat and s.equippedCombat == "cant.nearness"
 		end),
 		server("state").equippedCombat
 	)

@@ -23,9 +23,9 @@ local function rich(): any
 	local profile: any = ProfileSchema.default()
 	profile.revision = 12
 	profile.lease = { sessionId = "sess-1", jobId = "job-1", fence = 3, expiresAt = 1_700_000_090 }
-	profile.cants.unlocked["cant-nearness"] = true
-	profile.cants.equipped = "cant-nearness"
-	profile.cants.verses["cant-nearness"] = {}
+	profile.cants.unlocked["cant.nearness"] = true
+	profile.cants.equipped = "cant.nearness"
+	profile.cants.verses["cant.nearness"] = {}
 	profile.waymarks["waymark-i"] = { activated = true, rank = 1 }
 	profile.inventory = {
 		{ itemId = "item-test-ore", quantity = 5 },
@@ -78,7 +78,7 @@ suite:case("top-level shape and version", function()
 	expectError(p, "unexpected field extra")
 	p = rich()
 	p.schemaVersion = 99
-	expectError(p, "schemaVersion: expected 2")
+	expectError(p, "schemaVersion: expected 3")
 	p = rich()
 	p.revision = -1
 	expectError(p, "revision: must be a nonnegative integer")
@@ -107,8 +107,8 @@ end)
 
 suite:case("unknown canonical ids are rejected everywhere", function()
 	local p = rich()
-	p.cants.unlocked["cant-invented"] = true
-	expectError(p, "unknown cant id cant-invented")
+	p.cants.unlocked["cant.invented"] = true
+	expectError(p, "unknown cant id cant.invented")
 	p = rich()
 	p.waymarks["waymark-ix"] = { activated = false, rank = 0 }
 	expectError(p, "unknown waymark id waymark-ix")
@@ -119,8 +119,8 @@ suite:case("unknown canonical ids are rejected everywhere", function()
 	p.burdens.discovered["burden-nope"] = true
 	expectError(p, "unknown burden id burden-nope")
 	p = rich()
-	p.cants.verses["cant-nearness"]["verse-nope"] = true
-	expectError(p, "unknown verse id verse-nope")
+	p.cants.verses["cant.nearness"]["none.nope"] = true
+	expectError(p, "unknown verse id none.nope")
 	p = rich()
 	p.descents.bestClears["descent-nope"] = 1
 	expectError(p, "unknown descent id descent-nope")
@@ -128,14 +128,14 @@ end)
 
 suite:case("cant consistency", function()
 	local p = rich()
-	p.cants.equipped = "cant-nearness"
+	p.cants.equipped = "cant.nearness"
 	p.cants.unlocked = {}
 	expectError(p, "equipped cant is not unlocked")
 	p = rich()
 	p.cants.equipped = "waymark-i"
 	expectError(p, "cants.equipped: unknown cant id")
 	p = rich()
-	p.cants.unlocked["cant-nearness"] = false
+	p.cants.unlocked["cant.nearness"] = false
 	expectError(p, "must be true")
 end)
 
@@ -296,6 +296,30 @@ suite:case("every count bound is enforced at max+1 and allowed at max", function
 	end)
 	p.balances["currency-overflow"] = 1
 	expectError(p, "balances: more than " .. P.MAX_BALANCE_TYPES)
+end)
+
+suite:case("dotted canonical IDs validate as map keys", function()
+	-- Regression: the validator once recovered a Cant ID from the end of a
+	-- dotted path, so `cant.nearness` was read as `nearness` and every
+	-- Nearness Verse unlock was refused. Found in the Studio play-test.
+	local p: any = ProfileSchema.default()
+	p.cants.unlocked = { ["cant.nearness"] = true }
+	p.cants.verses = {
+		["cant.nearness"] = {
+			["near.close_step"] = true,
+			["near.draw_near"] = true,
+			["near.between_us"] = true,
+			["near.no_farther"] = true,
+		},
+	}
+	p.cants.equipped = "cant.nearness"
+	Assert.deepEqual(ProfileSchema.validate(p), {}, "all four Nearness Verses save")
+
+	-- Ownership checks still hold with dotted keys.
+	p.cants.verses["cant.nearness"]["near.close_step"] = nil
+	p.cants.verses["cant.embers"] = { ["near.close_step"] = true }
+	p.cants.unlocked["cant.embers"] = true
+	expectError(p, "verse near.close_step does not belong to cant.embers")
 end)
 
 return suite:cases()

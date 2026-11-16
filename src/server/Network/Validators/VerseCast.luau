@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local ContentRegistry = require(ReplicatedStorage.Shared.Catalogs.ContentRegistry)
 local Limits = require(ReplicatedStorage.Shared.Constants.Limits)
 local Payloads = require(ReplicatedStorage.Shared.Contracts.Payloads)
 local Schema = require(script.Parent.Schema)
@@ -21,7 +22,9 @@ local function parseVerseCast(raw: unknown): (Payloads.VerseCastPayload?, string
 		return nil, reason
 	end
 	local payload = value :: Payloads.VerseCastPayload
-	if string.sub(payload.verseId, 1, 6) ~= "verse-" then
+	-- Format only: a Verse ID is `<namespace>.<name>` (`near.close_step`).
+	-- Whether the Verse exists is the adapter's question.
+	if ContentRegistry.verseNamespace(payload.verseId) == nil then
 		return nil, "verseId is not a verse id"
 	end
 	return payload, nil

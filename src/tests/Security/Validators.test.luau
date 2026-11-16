@@ -79,7 +79,9 @@ suite:case("QuestChoice rejects every malformed field", function()
 	raw.revision = nil
 	expectReject(questChoice, raw, "missing field revision")
 
-	for _, bad in mixed("", "Quest-X", "quest x", "quest.x", string.rep("q", 49), 5, true, {}) do
+	for _, bad in
+		mixed("", "Quest-X", "quest x", "quest..x", "quest.", string.rep("q", 49), 5, true, {})
+	do
 		raw = goodQuestChoice()
 		raw.questId = bad
 		expectReject(questChoice, raw, "questId is not a canonical id")
@@ -142,7 +144,7 @@ suite:case("Schema kinds behave at their boundaries", function()
 		note = { kind = "string", optional = true },
 	})
 	local base: { [string]: unknown } =
-		{ region = "cant-nearness", count = 10, ratio = 1, label = "abcd", mode = "fast" }
+		{ region = "cant.nearness", count = 10, ratio = 1, label = "abcd", mode = "fast" }
 	Assert.notNil(validate(base), "boundaries inclusive")
 
 	local function mutate(key: string, value: unknown): { [string]: unknown }
@@ -150,7 +152,7 @@ suite:case("Schema kinds behave at their boundaries", function()
 		copy[key] = value
 		return copy
 	end
-	expectReject(validate, mutate("region", "cant-invented"), "not a known cant")
+	expectReject(validate, mutate("region", "cant.invented"), "not a known cant")
 	expectReject(validate, mutate("region", "waymark-i"), "not a known cant")
 	expectReject(validate, mutate("count", 11), "count is not an integer")
 	expectReject(validate, mutate("count", -1), "count is not an integer")

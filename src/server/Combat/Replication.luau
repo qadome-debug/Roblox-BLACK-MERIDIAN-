@@ -68,12 +68,12 @@ local PUBLIC_CUES: { [string]: { string } } = {
 	combatant_removed = {},
 	target_acquired = { "target" },
 	target_lost = { "reason" },
-	cant_activated = { "cantId" },
 	verse_cast_started = { "verseId", "target" },
 	verse_resolved = { "verseId", "target" },
 	verse_interrupted = { "verseId" },
 	verse_fizzled = { "verseId", "reason" },
-	dissonance_level_changed = { "level", "previous" },
+	dissonance_band_changed = { "level", "previous", "band" },
+	dissonance_rupture = {},
 	dissonance_action = { "actionId" },
 }
 

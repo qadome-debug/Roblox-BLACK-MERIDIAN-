@@ -37,6 +37,39 @@ export type Migrator = {
 
 local Migrations = {}
 
+-- Cant IDs used before schema v3, and what each became.
+Migrations.LEGACY_CANT_IDS = table.freeze({
+	["cant-nearness"] = "cant.nearness",
+} :: { [string]: string })
+
+-- Renames legacy keys of a map. When both the old and the new key exist
+-- the values are kept under the new key: tables are merged, anything else
+-- keeps the new key's value.
+local function renameKeys(map: { [any]: any }): { [any]: any }
+	local out: { [any]: any } = {}
+	for key, value in map do
+		if Migrations.LEGACY_CANT_IDS[key] == nil then
+			out[key] = value
+		end
+	end
+	for key, value in map do
+		local renamed = Migrations.LEGACY_CANT_IDS[key]
+		if renamed ~= nil then
+			local existing = out[renamed]
+			if type(existing) == "table" and type(value) == "table" then
+				for innerKey, innerValue in value do
+					if existing[innerKey] == nil then
+						existing[innerKey] = innerValue
+					end
+				end
+			elseif existing == nil then
+				out[renamed] = value
+			end
+		end
+	end
+	return out
+end
+
 -- The production chain.
 Migrations.STEPS = table.freeze({
 	-- v1 -> v2 (BM-047): receipts gain an append-only list of archive keys.
@@ -48,6 +81,31 @@ Migrations.STEPS = table.freeze({
 				raw.receipts.archives = {}
 			end
 			raw.schemaVersion = 2
+			return raw
+		end,
+	},
+	-- v2 -> v3: canonical IDs follow the design report's format
+	-- (approved 2026-11-16). The one Cant ID that existed before the change
+	-- is carried over explicitly, so a profile saved under the old ID keeps
+	-- its Cant instead of failing validation. IDs that did not change are
+	-- untouched, and nothing is dropped.
+	{
+		from = 2,
+		to = 3,
+		apply = function(raw: Raw): Raw
+			local cants = raw.cants
+			if type(cants) == "table" then
+				if type(cants.unlocked) == "table" then
+					cants.unlocked = renameKeys(cants.unlocked)
+				end
+				if type(cants.verses) == "table" then
+					cants.verses = renameKeys(cants.verses)
+				end
+				if type(cants.equipped) == "string" then
+					cants.equipped = Migrations.LEGACY_CANT_IDS[cants.equipped] or cants.equipped
+				end
+			end
+			raw.schemaVersion = 3
 			return raw
 		end,
 	},

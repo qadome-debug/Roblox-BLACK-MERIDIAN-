@@ -42,18 +42,18 @@ local function base(): Data
 		},
 		cants = {
 			{
-				id = "cant-t",
+				id = "cant.t",
 				name = "Test Cant",
 				launchRequired = true,
 				starterEligible = false,
-				verseIds = { "verse-t1" },
+				verseIds = { "t.v1" },
 			},
 		},
 		verses = {
-			{ id = "verse-t1", name = "Test Verse", launchRequired = true, cantId = "cant-t" },
+			{ id = "t.v1", name = "Test Verse", launchRequired = true, cantId = "cant.t" },
 		},
 		burdens = {
-			{ id = "burden-t", name = "Test Burden", launchRequired = true },
+			{ id = "burden-t", name = "Test Burden", launchRequired = true, cantId = "cant.t" },
 		},
 		waymarks = {
 			{
@@ -120,52 +120,121 @@ case("checked-in Content.luau is canonical", function()
 end)
 
 case("Canon exposes Nearness and Waymark I", function()
-	assert(Canon:has("cant", "cant-nearness"), "cant-nearness missing")
-	assert(Canon:getCant("cant-nearness") ~= nil, "getCant failed")
+	assert(Canon:has("cant", "cant.nearness"), "cant.nearness missing")
+	assert(Canon:getCant("cant.nearness") ~= nil, "getCant failed")
 	assert(
-		(Canon:getCant("cant-nearness") :: any).starterEligible == true,
-		"Nearness must be starter eligible"
+		(Canon:getCant("cant.nearness") :: any).starterEligible == false,
+		"Nearness is acquired in the story, not owned at creation"
 	)
+	for _, id in { "cant.embers", "cant.second_voice", "cant.still_water" } do
+		assert(Canon:has("cant", id), id .. " missing")
+	end
+	for _, id in { "near.close_step", "near.draw_near", "near.between_us", "near.no_farther" } do
+		assert(Canon:has("verse", id), id .. " missing")
+		assert((Canon:getVerse(id) :: any).cantId == "cant.nearness", id .. " belongs to Nearness")
+	end
 	assert(Canon:has("waymark", "waymark-i"), "waymark-i missing")
 	assert(Canon:categoryOf("waymark-i") == "waymark", "categoryOf")
-	assert(Canon:count("cant") == 1, "count")
+	assert(Canon:count("cant") == 4, "four launch Cants")
+	assert(Canon:count("verse") == 4, "four Nearness Verses")
 end)
 
 case("Canon is frozen", function()
 	assert(table.isfrozen(Canon :: any), "registry not frozen")
-	local cant = Canon:getCant("cant-nearness") :: any
+	local cant = Canon:getCant("cant.nearness") :: any
 	assert(table.isfrozen(cant), "entry not frozen")
 	assert(table.isfrozen(cant.verseIds), "nested list not frozen")
 	assert(table.isfrozen(Content :: any), "source data not frozen after build")
 end)
 
 case("resolve accepts only known ids of the right category", function()
-	assert(Canon:resolve("cant", "cant-nearness") == "cant-nearness", "known id")
-	assert(Canon:resolve("verse", "cant-nearness") == nil, "wrong category")
-	assert(Canon:resolve("cant", "cant-invented") == nil, "unknown id")
+	assert(Canon:resolve("cant", "cant.nearness") == "cant.nearness", "known id")
+	assert(Canon:resolve("verse", "cant.nearness") == nil, "wrong category")
+	assert(Canon:resolve("cant", "cant.invented") == nil, "unknown id")
 	assert(Canon:resolve("cant", 42) == nil, "number")
 	assert(Canon:resolve("cant", nil) == nil, "nil")
-	assert(Canon:resolve("cant", { "cant-nearness" }) == nil, "table")
+	assert(Canon:resolve("cant", { "cant.nearness" }) == nil, "table")
 end)
 
 case("duplicate id across categories", function()
 	local data = base()
-	table.insert(data.burdens, { id = "cant-t", name = "Dup", launchRequired = false })
+	table.insert(
+		data.burdens,
+		{ id = "cant.t", name = "Dup", launchRequired = false, cantId = "cant.t" }
+	)
 	expectError(data, "duplicate id")
 end)
 
 case("duplicate id within a category", function()
 	local data = base()
-	table.insert(data.burdens, { id = "burden-t", name = "Dup", launchRequired = false })
+	table.insert(
+		data.burdens,
+		{ id = "burden-t", name = "Dup", launchRequired = false, cantId = "cant.t" }
+	)
 	expectError(data, "duplicate id")
 end)
 
 case("invalid id characters", function()
-	for _, bad in { "Burden-T", "burden t", "burden_t", "burden.t", "", "-burden" } do
+	for _, bad in
+		{ "Burden-T", "burden t", "", "-burden", ".burden", "burden-", "burden..t", "burden-t." }
+	do
 		local data = base()
 		data.burdens[1].id = bad
 		expectError(data, "invalid id")
 	end
+end)
+
+case("the approved report format: dots and underscores", function()
+	for _, good in { "cant.nearness", "near.close_step", "cant.second_voice", "waymark-i" } do
+		assert(ContentRegistry.isValidId(good), good .. " must be a valid id")
+	end
+	assert(ContentRegistry.verseNamespace("near.close_step") == "near", "namespace")
+	assert(ContentRegistry.verseNamespace("close_step") == nil, "a Verse ID needs a namespace")
+	assert(ContentRegistry.verseNamespace("cant.nearness") == nil, "a Cant ID is not a Verse ID")
+	assert(ContentRegistry.verseNamespace("near.close.step") == nil, "one dot only")
+
+	-- A Cant is `cant.<name>`; the hyphen style is no longer accepted for it.
+	local data = base()
+	data.cants[1].id = "cant-t"
+	expectError(data, "id must start with 'cant.'")
+
+	-- A Verse is `<namespace>.<name>`.
+	data = base()
+	data.verses[1].id = "verse-t1"
+	expectError(data, "id must have the form '<namespace>.<name>'")
+end)
+
+case("a Verse namespace belongs to one Cant", function()
+	local data = base()
+	table.insert(data.cants, {
+		id = "cant.u",
+		name = "Other Cant",
+		launchRequired = false,
+		starterEligible = false,
+		verseIds = { "t.v9" },
+	})
+	table.insert(
+		data.verses,
+		{ id = "t.v9", name = "Stray", launchRequired = false, cantId = "cant.u" }
+	)
+	expectError(data, "namespace 't' already belongs to cant.t")
+
+	data = base()
+	table.insert(data.cants[1].verseIds, "other.v1")
+	table.insert(
+		data.verses,
+		{ id = "other.v1", name = "Split", launchRequired = false, cantId = "cant.t" }
+	)
+	expectError(data, "verses of cant.t use the namespace 't'")
+end)
+
+case("a Burden names the Cant it belongs to", function()
+	local data = base()
+	data.burdens[1].cantId = "cant.missing"
+	expectError(data, "cant.missing")
+	data = base()
+	set(data.burdens[1], "cantId", nil)
+	expectError(data, "missing field 'cantId'")
 end)
 
 case("id too long", function()
@@ -176,7 +245,7 @@ end)
 
 case("id with wrong prefix", function()
 	local data = base()
-	data.burdens[1].id = "cant-pretending"
+	data.burdens[1].id = "cant.pretending"
 	expectError(data, "must start with 'burden-'")
 end)
 
@@ -188,7 +257,7 @@ end)
 
 case("reference to wrong category", function()
 	local data = base()
-	data.bosses[1].locationId = "cant-t"
+	data.bosses[1].locationId = "cant.t"
 	expectError(data, "must reference a region or descent")
 end)
 
@@ -218,7 +287,7 @@ case("wrong field type", function()
 	set(data.cants[1], "starterEligible", "yes")
 	expectError(data, "starterEligible must be a boolean")
 	data = base()
-	set(data.cants[1], "verseIds", "verse-t1")
+	set(data.cants[1], "verseIds", "t.v1")
 	expectError(data, "verseIds must be an array")
 	data = base()
 	set(data.chapters[1], "order", 0)
@@ -242,25 +311,25 @@ end)
 
 case("list entries must be unique", function()
 	local data = base()
-	data.cants[1].verseIds = { "verse-t1", "verse-t1" }
-	expectError(data, 'lists "verse-t1" twice')
+	data.cants[1].verseIds = { "t.v1", "t.v1" }
+	expectError(data, 'lists "t.v1" twice')
 end)
 
 case("verse and cant must agree", function()
 	local data = base()
 	table.insert(
 		data.verses,
-		{ id = "verse-t2", name = "Orphan", launchRequired = false, cantId = "cant-t" }
+		{ id = "t.v2", name = "Orphan", launchRequired = false, cantId = "cant.t" }
 	)
 	expectError(data, "does not list this Verse")
 
 	data = base()
 	table.insert(data.cants, {
-		id = "cant-u",
+		id = "cant.u",
 		name = "Other",
 		launchRequired = false,
 		starterEligible = false,
-		verseIds = { "verse-t1" },
+		verseIds = { "t.v1" },
 	})
 	expectError(data, "whose cantId is not this Cant")
 end)

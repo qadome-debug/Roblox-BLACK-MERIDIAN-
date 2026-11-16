@@ -92,6 +92,6 @@ local Profile = {}
 
 -- The schema version new profiles are written at. Migrations (BM-023) move
 -- older versions forward one step at a time.
-Profile.SCHEMA_VERSION = 2
+Profile.SCHEMA_VERSION = 3
 
 return table.freeze(Profile)

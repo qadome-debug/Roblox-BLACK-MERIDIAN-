@@ -1,39 +1,70 @@
 --!strict
 -- Dissonance meter (BM-068).
 --
--- A per-combatant meter owned by the server. It rises when the server says
--- so (for example when a Verse resolves), decays after a quiet period, and
--- crosses thresholds into numbered levels. Every change happens inside the
--- simulation step order, so transitions are deterministic for a given
--- sequence of steps. Clients never send meter values: the only client path
--- is `perform`, which names an action and is judged here.
+-- A per-combatant meter owned by the server. Every change happens inside
+-- the simulation step order, so transitions are deterministic for a given
+-- sequence of steps. Clients never send meter values.
 --
--- PLACEHOLDER BEHAVIOUR (not canon; replace when the design is supplied):
---   * what raises Dissonance (today: the caller decides; CombatService adds
---     a fixed amount when a Verse resolves),
---   * that the meter decays over time, and the thresholds and rates,
---   * that the meter lives only for the combat session. The profile has a
---     saved `burdens.dissonance` field and docs/architecture.md puts the
---     meter under BurdenService; this layer does not read or write it yet.
--- A passing test of this layer proves the mechanism, not the game rule.
+-- FROM THE DESIGN (22-part report, approved 2026-11-16):
+--   * The meter runs from 0 to 100 in five bands:
+--       0-39   Stable or manageable, with minor Burden pressure
+--       40-64  Noticeable visual and audio instability
+--       65-84  Enemy and environmental reactions
+--       85-99  Fractured events become possible
+--       100    A controlled rupture determined by the region or encounter,
+--              never arbitrary permanent inventory loss
+--   * It rises through Verse use, certain Relics, unstable areas, enemy
+--     attacks and failed containment interactions.
+--   * It recovers through stable environments, anchors, camps, approved
+--     consumables, encounter completion and certain cooperative actions.
+--   * The raw value normally resets or recovers between sessions. It is not
+--     saved: a combatant always starts at 0. Lasting consequences belong to
+--     progression and Burdens.
 --
--- Dissonance actions are data: minimum level, the Dissonance they consume
--- (or add), a step cooldown, and a server effect. The canonical actions,
--- thresholds and rates are not yet in the design inventory, so the
--- production tuning below is provisional and the production action list
--- is empty. No action is invented.
+-- NOT YET ESTABLISHED (nothing is assumed for these):
+--   * how much each source adds and each recovery removes. Callers pass the
+--     amount; no production caller has one until it is approved. The only
+--     built-in rate, passive recovery in a stable environment, is unset in
+--     production, so nothing recovers by itself yet.
+--   * what each band does to the player, to enemies and to the world. This
+--     layer only reports band changes.
+--   * what a rupture does. Reaching 100 is announced (`dissonance_rupture`)
+--     and handed to an injected region or encounter handler; this layer
+--     takes nothing from the player.
+--   * player-triggered Dissonance actions. The mechanism below (`perform`)
+--     is kept because the DissonanceAction request exists, but the
+--     production action list is empty and stays empty until a design for
+--     them is approved.
 
 local ActionMachine = require(script.Parent.ActionMachine)
 local Resources = require(script.Parent.Resources)
 local Simulation = require(script.Parent.Simulation)
 
+export type Band = {
+	-- Internal key, used in events and code. Not player-facing.
+	key: string,
+	-- The design's name for the band.
+	name: string,
+	-- The lowest meter value in the band.
+	min: number,
+}
+
+export type GainSource = "verse" | "relic" | "unstableArea" | "enemyAttack" | "failedContainment"
+
+export type RecoverySource =
+	"stableEnvironment"
+	| "anchor"
+	| "camp"
+	| "consumable"
+	| "encounterComplete"
+	| "cooperative"
+
+-- The values the design has not fixed. Every field is optional; an unset
+-- field switches its behaviour off rather than falling back to a guess.
 export type Tuning = {
-	max: number,
-	-- Ascending meter values; reaching thresholds[i] means level i.
-	thresholds: { number },
-	decayPerStep: number,
-	decayDelaySteps: number,
-	provisional: boolean,
+	-- Meter removed per second while a combatant is in a stable
+	-- environment.
+	stableRecoveryPerSecond: number?,
 }
 
 export type ActionContext = {
@@ -45,6 +76,7 @@ export type ActionContext = {
 }
 
 export type ActionDef = {
+	-- Index of the lowest band the action needs (0 = Stable).
 	minLevel: number,
 	-- Positive consumes Dissonance, negative adds it.
 	consume: number,
@@ -55,12 +87,20 @@ export type ActionDef = {
 export type Deps = {
 	tuning: Tuning?,
 	actions: { [string]: ActionDef }?,
+	-- Whether a combatant is in a stable environment right now. Supplied by
+	-- the world layer; without it nobody is.
+	inStableEnvironment: ((id: string) -> boolean)?,
+	-- Region or encounter handler for a rupture.
+	onRupture: ((id: string) -> ())?,
 }
 
 export type Layer = {
-	add: (self: Layer, id: string, amount: number, source: string) -> number,
+	add: (self: Layer, id: string, amount: number, source: GainSource) -> number,
+	recover: (self: Layer, id: string, amount: number, source: RecoverySource) -> number,
 	value: (self: Layer, id: string) -> number,
+	-- Band index, 0 (Stable) to 4 (Controlled rupture).
 	level: (self: Layer, id: string) -> number,
+	band: (self: Layer, id: string) -> Band,
 	perform: (self: Layer, id: string, actionId: string) -> ActionMachine.Outcome,
 	hasAction: (self: Layer, actionId: string) -> boolean,
 	forget: (self: Layer, id: string) -> (),
@@ -68,20 +108,57 @@ export type Layer = {
 
 local Dissonance = {}
 
-Dissonance.PROVISIONAL_TUNING = table.freeze({
-	max = 100,
-	thresholds = table.freeze({ 25, 50, 75, 100 }),
-	decayPerStep = 0.25,
-	decayDelaySteps = 90,
-	provisional = true,
-} :: Tuning)
+Dissonance.MAX = 100
 
+-- Canon. Ascending; BANDS[i + 1] is band index i.
+Dissonance.BANDS = table.freeze({
+	table.freeze({ key = "stable", name = "Stable", min = 0 }),
+	table.freeze({ key = "instability", name = "Noticeable instability", min = 40 }),
+	table.freeze({ key = "reactions", name = "Enemy and environmental reactions", min = 65 }),
+	table.freeze({ key = "fracture", name = "Fractured event risk", min = 85 }),
+	table.freeze({ key = "rupture", name = "Controlled rupture", min = 100 }),
+} :: { Band })
+
+Dissonance.RUPTURE_LEVEL = #Dissonance.BANDS - 1
+
+Dissonance.GAIN_SOURCES = table.freeze({
+	verse = true,
+	relic = true,
+	unstableArea = true,
+	enemyAttack = true,
+	failedContainment = true,
+} :: { [string]: boolean })
+
+Dissonance.RECOVERY_SOURCES = table.freeze({
+	stableEnvironment = true,
+	anchor = true,
+	camp = true,
+	consumable = true,
+	encounterComplete = true,
+	cooperative = true,
+} :: { [string]: boolean })
+
+-- No values are approved yet, so production tuning sets nothing.
+Dissonance.PRODUCTION_TUNING = table.freeze({} :: Tuning)
+
+-- Empty until a design for player-triggered actions is approved.
 Dissonance.PRODUCTION_ACTIONS = table.freeze({} :: { [string]: ActionDef })
 
-local MAX_ADD = 1000
+local MAX_CHANGE = 1000
 
 local function isFinite(value: unknown): boolean
 	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+-- Band index for a meter value.
+function Dissonance.levelFor(value: number): number
+	local level = 0
+	for index, band in Dissonance.BANDS do
+		if value >= band.min then
+			level = index - 1
+		end
+	end
+	return level
 end
 
 function Dissonance.validateTuning(tuning: unknown): { string }
@@ -90,46 +167,35 @@ function Dissonance.validateTuning(tuning: unknown): { string }
 	end
 	local t = tuning :: { [string]: any }
 	local problems: { string } = {}
-	if not isFinite(t.max) or t.max <= 0 then
-		table.insert(problems, "max must be positive")
-	end
-	if type(t.thresholds) ~= "table" or #t.thresholds == 0 then
-		table.insert(problems, "thresholds must be a non-empty list")
-	else
-		local previous = 0
-		for i, at in t.thresholds do
-			if not isFinite(at) or at <= previous or (isFinite(t.max) and at > t.max) then
-				table.insert(problems, "threshold " .. i .. " must ascend within (0, max]")
-				break
-			end
-			previous = at
+	for key in t do
+		if key ~= "stableRecoveryPerSecond" then
+			table.insert(problems, "unknown tuning field " .. tostring(key))
 		end
 	end
-	if not isFinite(t.decayPerStep) or t.decayPerStep < 0 then
-		table.insert(problems, "decayPerStep must be >= 0")
-	end
-	if not isFinite(t.decayDelaySteps) or t.decayDelaySteps < 0 then
-		table.insert(problems, "decayDelaySteps must be >= 0")
-	end
-	if type(t.provisional) ~= "boolean" then
-		table.insert(problems, "provisional must be a boolean")
+	local rate = t.stableRecoveryPerSecond
+	if rate ~= nil and (not isFinite(rate) or rate <= 0 or rate > Dissonance.MAX) then
+		table.insert(
+			problems,
+			"stableRecoveryPerSecond must be within (0, " .. Dissonance.MAX .. "]"
+		)
 	end
 	return problems
 end
 
-function Dissonance.validateAction(def: unknown, levels: number): { string }
+function Dissonance.validateAction(def: unknown): { string }
 	if type(def) ~= "table" then
 		return { "action must be a table" }
 	end
 	local d = def :: { [string]: any }
 	local problems: { string } = {}
+	local top = Dissonance.RUPTURE_LEVEL
 	if
 		type(d.minLevel) ~= "number"
 		or d.minLevel ~= math.floor(d.minLevel)
 		or d.minLevel < 0
-		or d.minLevel > levels
+		or d.minLevel > top
 	then
-		table.insert(problems, "minLevel must be an integer in 0.." .. levels)
+		table.insert(problems, "minLevel must be an integer in 0.." .. top)
 	end
 	if not isFinite(d.consume) then
 		table.insert(problems, "consume must be finite")
@@ -148,11 +214,13 @@ function Dissonance.validateAction(def: unknown, levels: number): { string }
 end
 
 function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
-	local tuning = (deps and deps.tuning) or Dissonance.PROVISIONAL_TUNING
+	local tuning: Tuning = (deps and deps.tuning) or Dissonance.PRODUCTION_TUNING
 	local actions = (deps and deps.actions) or Dissonance.PRODUCTION_ACTIONS
+	local inStableEnvironment = deps and deps.inStableEnvironment
+	local onRupture = deps and deps.onRupture
 	local problems = Dissonance.validateTuning(tuning)
 	for actionId, def in actions do
-		for _, p in Dissonance.validateAction(def, #tuning.thresholds) do
+		for _, p in Dissonance.validateAction(def) do
 			table.insert(problems, actionId .. ": " .. p)
 		end
 	end
@@ -160,33 +228,36 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		error("Dissonance: invalid configuration: " .. table.concat(problems, "; "), 2)
 	end
 
-	local meters: { [string]: number } = {}
-	local levels: { [string]: number } = {}
-	local lastRise: { [string]: number } = {}
-	local readyAt: { [string]: { [string]: number } } = {}
-
-	local function levelFor(value: number): number
-		local level = 0
-		for i, at in tuning.thresholds do
-			if value >= at then
-				level = i
-			end
-		end
-		return level
+	local stableRecoveryPerStep: number? = nil
+	if tuning.stableRecoveryPerSecond ~= nil then
+		stableRecoveryPerStep = tuning.stableRecoveryPerSecond * sim.stepSeconds
 	end
 
+	local meters: { [string]: number } = {}
+	local levels: { [string]: number } = {}
+	local readyAt: { [string]: { [string]: number } } = {}
+
 	local function set(id: string, value: number, source: string)
-		local clamped = math.clamp(value, 0, tuning.max)
+		local clamped = math.clamp(value, 0, Dissonance.MAX)
 		meters[id] = clamped
 		local previous = levels[id] or 0
-		local level = levelFor(clamped)
-		if level ~= previous then
-			levels[id] = level
-			sim:emit(
-				"dissonance_level_changed",
-				id,
-				{ level = level, previous = previous, source = source }
-			)
+		local level = Dissonance.levelFor(clamped)
+		if level == previous then
+			return
+		end
+		levels[id] = level
+		sim:emit("dissonance_band_changed", id, {
+			level = level,
+			previous = previous,
+			band = Dissonance.BANDS[level + 1].key,
+			source = source,
+		})
+		if level == Dissonance.RUPTURE_LEVEL then
+			-- What a rupture does belongs to the region or encounter.
+			sim:emit("dissonance_rupture", id, { source = source })
+			if onRupture ~= nil then
+				onRupture(id)
+			end
 		end
 	end
 
@@ -200,17 +271,33 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		return levels[id] or 0
 	end
 
+	function layer:band(id: string): Band
+		return Dissonance.BANDS[(levels[id] or 0) + 1]
+	end
+
 	function layer:hasAction(actionId: string): boolean
 		return actions[actionId] ~= nil
 	end
 
-	function layer:add(id: string, amount: number, source: string): number
-		local combatant = sim:get(id)
-		if combatant == nil or not isFinite(amount) or amount <= 0 then
+	function layer:add(id: string, amount: number, source: GainSource): number
+		if not Dissonance.GAIN_SOURCES[source] then
+			error("Dissonance: unknown gain source " .. tostring(source), 2)
+		end
+		if sim:get(id) == nil or not isFinite(amount) or amount <= 0 then
 			return self:value(id)
 		end
-		lastRise[id] = sim:stepNumber()
-		set(id, self:value(id) + math.min(amount, MAX_ADD), source)
+		set(id, self:value(id) + math.min(amount, MAX_CHANGE), source)
+		return self:value(id)
+	end
+
+	function layer:recover(id: string, amount: number, source: RecoverySource): number
+		if not Dissonance.RECOVERY_SOURCES[source] then
+			error("Dissonance: unknown recovery source " .. tostring(source), 2)
+		end
+		if sim:get(id) == nil or not isFinite(amount) or amount <= 0 then
+			return self:value(id)
+		end
+		set(id, self:value(id) - math.min(amount, MAX_CHANGE), source)
 		return self:value(id)
 	end
 
@@ -240,10 +327,7 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		end
 		byAction[actionId] = step + def.cooldownSteps
 		readyAt[id] = byAction
-		if def.consume > 0 then
-			set(id, self:value(id) - def.consume, actionId)
-		elseif def.consume < 0 then
-			lastRise[id] = step
+		if def.consume ~= 0 then
 			set(id, self:value(id) - def.consume, actionId)
 		end
 		sim:emit("dissonance_action", id, { actionId = actionId, level = level })
@@ -251,7 +335,7 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 		return { ok = true } :: any
 	end
 
-	sim:onStep(function(step: number)
+	sim:onStep(function(_step: number)
 		local ids: { string } = {}
 		for id in meters do
 			table.insert(ids, id)
@@ -261,12 +345,17 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 			if sim:get(id) == nil then
 				meters[id] = nil
 				levels[id] = nil
-				lastRise[id] = nil
 				continue
 			end
-			local value = meters[id]
-			if value > 0 and step - (lastRise[id] or 0) >= tuning.decayDelaySteps then
-				set(id, value - tuning.decayPerStep, "decay")
+			-- Passive recovery happens only in a stable environment, and
+			-- only once its rate has been approved.
+			if
+				stableRecoveryPerStep ~= nil
+				and inStableEnvironment ~= nil
+				and meters[id] > 0
+				and inStableEnvironment(id)
+			then
+				set(id, meters[id] - stableRecoveryPerStep, "stableEnvironment")
 			end
 		end
 	end)
@@ -274,7 +363,6 @@ function Dissonance.attach(sim: Simulation.Simulation, deps: Deps?): Layer
 	function layer:forget(id: string)
 		meters[id] = nil
 		levels[id] = nil
-		lastRise[id] = nil
 		readyAt[id] = nil
 	end
 

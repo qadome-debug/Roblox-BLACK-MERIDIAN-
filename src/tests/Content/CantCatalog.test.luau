@@ -39,35 +39,35 @@ local function registry(): ContentRegistry.Registry
 		},
 		cants = {
 			{
-				id = "cant-ta",
+				id = "cant.ta",
 				name = "Test Cant A",
 				launchRequired = true,
 				starterEligible = true,
-				verseIds = { "verse-ta1", "verse-ta2" },
+				verseIds = { "ta.v1", "ta.v2" },
 			},
 			{
-				id = "cant-tb",
+				id = "cant.tb",
 				name = "Test Cant B",
 				launchRequired = true,
 				starterEligible = false,
 				verseIds = {},
 			},
 			{
-				id = "cant-tc",
+				id = "cant.tc",
 				name = "Test Cant C",
 				launchRequired = false,
 				starterEligible = false,
-				verseIds = { "verse-tc1" },
+				verseIds = { "tc.v1" },
 			},
 		},
 		verses = {
-			{ id = "verse-ta1", name = "Test Verse A1", launchRequired = true, cantId = "cant-ta" },
-			{ id = "verse-ta2", name = "Test Verse A2", launchRequired = true, cantId = "cant-ta" },
+			{ id = "ta.v1", name = "Test Verse A1", launchRequired = true, cantId = "cant.ta" },
+			{ id = "ta.v2", name = "Test Verse A2", launchRequired = true, cantId = "cant.ta" },
 			{
-				id = "verse-tc1",
+				id = "tc.v1",
 				name = "Test Verse C1",
 				launchRequired = false,
-				cantId = "cant-tc",
+				cantId = "cant.tc",
 			},
 		},
 		burdens = {},
@@ -88,27 +88,27 @@ end
 local function defs(): { any }
 	return {
 		{
-			id = "cant-ta",
+			id = "cant.ta",
 			unlock = { kind = "starter" },
 			slots = { "primary", "secondary" },
 			exclusiveWith = {},
-			verseIds = { "verse-ta2", "verse-ta1" },
+			verseIds = { "ta.v2", "ta.v1" },
 			mechanics = "canonical",
 		},
 		{
-			id = "cant-tb",
+			id = "cant.tb",
 			unlock = { kind = "waymark", waymarkId = "waymark-ta1" },
 			slots = { "secondary" },
-			exclusiveWith = { "cant-tc" },
+			exclusiveWith = { "cant.tc" },
 			verseIds = {},
 			mechanics = "provisional",
 		},
 		{
-			id = "cant-tc",
+			id = "cant.tc",
 			unlock = { kind = "quest", questId = "quest-t1" },
 			slots = { "primary", "secondary" },
-			exclusiveWith = { "cant-tb" },
-			verseIds = { "verse-tc1" },
+			exclusiveWith = { "cant.tb" },
+			verseIds = { "tc.v1" },
 			mechanics = "provisional",
 		},
 	}
@@ -129,8 +129,8 @@ local NONE: CantCatalog.Facts = { waymarks = {}, quests = {} }
 suite:case("the fixture catalog validates and builds", function()
 	Assert.deepEqual(CantCatalog.validate(defs(), registry()), {}, "no problems")
 	local catalog = CantCatalog.build(defs() :: any, registry())
-	Assert.deepEqual(catalog:ids(), { "cant-ta", "cant-tb", "cant-tc" }, "sorted ids")
-	Assert.isTrue(table.isfrozen(catalog:get("cant-ta") :: any), "frozen")
+	Assert.deepEqual(catalog:ids(), { "cant.ta", "cant.tb", "cant.tc" }, "sorted ids")
+	Assert.isTrue(table.isfrozen(catalog:get("cant.ta") :: any), "frozen")
 end)
 
 suite:case("the production catalog covers every canonical Cant", function()
@@ -139,42 +139,67 @@ suite:case("the production catalog covers every canonical Cant", function()
 		Assert.notNil(catalog:get(id), id .. " defined")
 	end
 	Assert.equal(#catalog:ids(), #Canon:ids("cant"), "nothing extra")
-	Assert.notNil(catalog:get("cant-nearness"), "Nearness defined")
-	Assert.isTrue(catalog:isUnlocked("cant-nearness", NONE), "Nearness is a starter Cant")
+	Assert.deepEqual(
+		catalog:ids(),
+		{ "cant.embers", "cant.nearness", "cant.second_voice", "cant.still_water" },
+		"the four launch Cants"
+	)
+	local nearness = catalog:get("cant.nearness") :: CantCatalog.Definition
+	Assert.equal(nearness.unlock.kind, "story", "Nearness is acquired in the introductory story")
+	Assert.deepEqual(
+		nearness.verseIds,
+		{ "near.close_step", "near.draw_near", "near.between_us", "near.no_farther" },
+		"its four Verses"
+	)
+	-- Acquiring Nearness and earning Waymark I are different moments:
+	-- holding the Waymark does not unlock the Cant, and nothing but a grant
+	-- recorded in the profile does.
+	Assert.isFalse(catalog:isUnlocked("cant.nearness", NONE), "not owned at creation")
+	local withWaymark = { waymarks = { ["waymark-i"] = true }, quests = {} }
+	Assert.isFalse(
+		catalog:isUnlocked("cant.nearness", withWaymark :: any),
+		"Waymark I does not unlock Nearness"
+	)
+	for _, id in { "cant.embers", "cant.second_voice", "cant.still_water" } do
+		local def = catalog:get(id) :: CantCatalog.Definition
+		Assert.equal(def.unlock.kind, "undetermined", id .. " acquisition is not established")
+		Assert.equal(def.mechanics, "provisional", id .. " is provisional")
+		Assert.isFalse(catalog:isUnlocked(id, withWaymark :: any), id .. " can never unlock")
+	end
 end)
 
 suite:case("unknown and fabricated Cant IDs are rejected", function()
 	local catalog = CantCatalog.build(defs() :: any, registry())
 	for _, value: any in
-		{ "cant-fake", "cant-nearness", "", 42, false, {} :: any, "CANT-TA" } :: { any }
+		{ "cant.fake", "cant.nearness", "", 42, false, {} :: any, "CANT-TA" } :: { any }
 	do
 		Assert.isNil(catalog:resolve(value), "rejected " .. tostring(value))
 	end
-	Assert.equal(catalog:resolve("cant-ta"), "cant-ta", "known")
+	Assert.equal(catalog:resolve("cant.ta"), "cant.ta", "known")
 	local data = defs()
-	data[1].id = "cant-invented"
-	expectProblem(data, "cant-invented: not a canonical Cant ID")
+	data[1].id = "cant.invented"
+	expectProblem(data, "cant.invented: not a canonical Cant ID")
 end)
 
 suite:case("a missing or duplicate definition is a problem", function()
 	local data = defs()
 	table.remove(data, 3)
 	data[2].exclusiveWith = {}
-	expectProblem(data, "cant-tc: canonical Cant has no definition")
+	expectProblem(data, "cant.tc: canonical Cant has no definition")
 	local dup = defs()
 	table.insert(dup, table.clone(dup[1]))
-	expectProblem(dup, "cant-ta: defined more than once")
+	expectProblem(dup, "cant.ta: defined more than once")
 end)
 
 suite:case("invalid Verse references are problems", function()
 	local unknown = defs()
-	unknown[1].verseIds = { "verse-ta1", "verse-nope" }
-	expectProblem(unknown, "verse verse-nope is not a canonical Verse")
+	unknown[1].verseIds = { "ta.v1", "none.nope" }
+	expectProblem(unknown, "verse none.nope is not a canonical Verse")
 	local foreign = defs()
-	foreign[1].verseIds = { "verse-ta1", "verse-ta2", "verse-tc1" }
-	expectProblem(foreign, "verse verse-tc1 belongs to cant-tc")
+	foreign[1].verseIds = { "ta.v1", "ta.v2", "tc.v1" }
+	expectProblem(foreign, "verse tc.v1 belongs to cant.tc")
 	local missing = defs()
-	missing[1].verseIds = { "verse-ta1" }
+	missing[1].verseIds = { "ta.v1" }
 	expectProblem(missing, "verseIds differ from the registry")
 end)
 
@@ -207,11 +232,11 @@ suite:case("invalid slots, exclusions and fields are problems", function()
 	twice[1].slots = { "primary", "primary" }
 	expectProblem(twice, "slot primary listed twice")
 	local selfEx = defs()
-	selfEx[1].exclusiveWith = { "cant-ta" }
+	selfEx[1].exclusiveWith = { "cant.ta" }
 	expectProblem(selfEx, "cannot exclude itself")
 	local oneWay = defs()
 	oneWay[3].exclusiveWith = {}
-	expectProblem(oneWay, "excludes cant-tc but not the other way round")
+	expectProblem(oneWay, "excludes cant.tc but not the other way round")
 	local field = defs()
 	field[1].damage = 500
 	expectProblem(field, "unknown field damage")
@@ -231,12 +256,12 @@ end)
 
 suite:case("unlock rules read only server facts", function()
 	local catalog = CantCatalog.build(defs() :: any, registry())
-	Assert.deepEqual(catalog:unlocked(NONE), { "cant-ta" }, "starter only")
+	Assert.deepEqual(catalog:unlocked(NONE), { "cant.ta" }, "starter only")
 	local facts: CantCatalog.Facts = { waymarks = { ["waymark-ta1"] = true }, quests = {} }
-	Assert.deepEqual(catalog:unlocked(facts), { "cant-ta", "cant-tb" }, "waymark unlocks B")
+	Assert.deepEqual(catalog:unlocked(facts), { "cant.ta", "cant.tb" }, "waymark unlocks B")
 	facts.quests["quest-t1"] = true
-	Assert.isTrue(catalog:isUnlocked("cant-tc", facts), "quest unlocks C")
-	Assert.isFalse(catalog:isUnlocked("cant-fake", facts), "unknown never unlocked")
+	Assert.isTrue(catalog:isUnlocked("cant.tc", facts), "quest unlocks C")
+	Assert.isFalse(catalog:isUnlocked("cant.fake", facts), "unknown never unlocked")
 end)
 
 suite:case("loadouts respect slots, unlocks, duplicates and exclusions", function()
@@ -247,25 +272,25 @@ suite:case("loadouts respect slots, unlocks, duplicates and exclusions", functio
 		local ok, reason = catalog:checkLoadout(loadout, facts)
 		return if ok then nil else reason
 	end
-	Assert.isNil(check({ primary = "cant-ta", secondary = "cant-tb" }, all), "legal")
+	Assert.isNil(check({ primary = "cant.ta", secondary = "cant.tb" }, all), "legal")
 	Assert.isNil(check({}, all), "empty loadout is legal")
-	Assert.equal(check({ primary = "cant-tb" }, all), "cant not allowed in slot", "slot")
-	Assert.equal(check({ secondary = "cant-tb" }, NONE), "cant not unlocked", "locked")
-	Assert.equal(check({ primary = "cant-fake" }, all), "unknown cant", "forged")
-	Assert.equal(check({ third = "cant-ta" }, all), "unknown slot", "slot name")
+	Assert.equal(check({ primary = "cant.tb" }, all), "cant not allowed in slot", "slot")
+	Assert.equal(check({ secondary = "cant.tb" }, NONE), "cant not unlocked", "locked")
+	Assert.equal(check({ primary = "cant.fake" }, all), "unknown cant", "forged")
+	Assert.equal(check({ third = "cant.ta" }, all), "unknown slot", "slot name")
 	Assert.equal(
-		check({ primary = "cant-ta", secondary = "cant-ta" }, all),
+		check({ primary = "cant.ta", secondary = "cant.ta" }, all),
 		"cant equipped twice",
 		"duplicate"
 	)
 	Assert.equal(
-		check({ primary = "cant-tc", secondary = "cant-tb" }, all),
+		check({ primary = "cant.tc", secondary = "cant.tb" }, all),
 		"cants are exclusive",
 		"exclusive"
 	)
-	Assert.isTrue(catalog:isVerseCompatible("cant-ta", "verse-ta1"), "compatible")
-	Assert.isFalse(catalog:isVerseCompatible("cant-ta", "verse-tc1"), "incompatible")
-	Assert.isFalse(catalog:isVerseCompatible("cant-fake", "verse-ta1"), "unknown cant")
+	Assert.isTrue(catalog:isVerseCompatible("cant.ta", "ta.v1"), "compatible")
+	Assert.isFalse(catalog:isVerseCompatible("cant.ta", "tc.v1"), "incompatible")
+	Assert.isFalse(catalog:isVerseCompatible("cant.fake", "ta.v1"), "unknown cant")
 end)
 
 return suite:cases()

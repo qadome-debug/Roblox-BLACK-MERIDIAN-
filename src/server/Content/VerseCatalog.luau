@@ -41,9 +41,15 @@ export type Mechanics = "canonical" | "provisional"
 export type Definition = {
 	id: string,
 	cantId: string,
-	costs: { Cost },
-	castSteps: number,
-	cooldownSteps: number,
+	-- The design gives cooldowns in seconds. They are converted to whole
+	-- simulation steps where the cast layer attaches (`toSteps`).
+	cooldownSeconds: number,
+	-- nil means "not yet established by the design". Nothing is filled in
+	-- for it: a Verse with any of these missing cannot be cast at all.
+	costs: { Cost }?,
+	castSeconds: number?,
+	-- Dissonance the caster gains when the Verse resolves.
+	dissonance: number?,
 	prerequisites: Prerequisites,
 	mechanics: Mechanics,
 }
@@ -61,22 +67,26 @@ export type Catalog = {
 	ids: (self: Catalog) -> { string },
 	forCant: (self: Catalog, cantId: string) -> { string },
 	isCompatible: (self: Catalog, verseId: string, cantId: string) -> boolean,
+	-- False while any value the cast needs is still unset.
+	isCastable: (self: Catalog, verseId: string) -> boolean,
 	prerequisitesMet: (self: Catalog, verseId: string, facts: Facts) -> boolean,
 }
 
 local VerseCatalog = {}
 
 VerseCatalog.MAX_COST = 1000
-VerseCatalog.MAX_CAST_STEPS = 60 * 10
-VerseCatalog.MAX_COOLDOWN_STEPS = 60 * 60 * 10
+VerseCatalog.MAX_CAST_SECONDS = 20
+VerseCatalog.MAX_COOLDOWN_SECONDS = 20 * 60
+VerseCatalog.MAX_DISSONANCE = 100
 VerseCatalog.MAX_COSTS = 3
 
 local FIELDS: { [string]: boolean } = {
 	id = true,
 	cantId = true,
 	costs = true,
-	castSteps = true,
-	cooldownSteps = true,
+	castSeconds = true,
+	cooldownSeconds = true,
+	dissonance = true,
 	prerequisites = true,
 	mechanics = true,
 }
@@ -98,11 +108,8 @@ local function isFinite(value: unknown): boolean
 	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
-local function isIntegerIn(value: unknown, min: number, max: number): boolean
-	return isFinite(value)
-		and (value :: number) == math.floor(value :: number)
-		and (value :: number) >= min
-		and (value :: number) <= max
+local function isSecondsIn(value: unknown, max: number): boolean
+	return isFinite(value) and (value :: number) >= 0 and (value :: number) <= max
 end
 
 function VerseCatalog.validate(definitions: unknown, canon: ContentRegistry.Registry?): { string }
@@ -148,9 +155,10 @@ function VerseCatalog.validate(definitions: unknown, canon: ContentRegistry.Regi
 		end
 
 		local costs = def.costs
-		if not isArray(costs) or #costs > VerseCatalog.MAX_COSTS then
+		-- nil means "not established yet"; see the completeness rule below.
+		if costs ~= nil and (not isArray(costs) or #costs > VerseCatalog.MAX_COSTS) then
 			problem(id .. ": costs must be a list of at most " .. VerseCatalog.MAX_COSTS)
-		else
+		elseif costs ~= nil then
 			local pools: { [string]: boolean } = {}
 			for _, cost in costs :: { any } do
 				if
@@ -174,13 +182,41 @@ function VerseCatalog.validate(definitions: unknown, canon: ContentRegistry.Regi
 			end
 		end
 
-		if not isIntegerIn(def.castSteps, 0, VerseCatalog.MAX_CAST_STEPS) then
-			problem(id .. ": castSteps must be an integer in 0.." .. VerseCatalog.MAX_CAST_STEPS)
-		end
-		if not isIntegerIn(def.cooldownSteps, 0, VerseCatalog.MAX_COOLDOWN_STEPS) then
+		if
+			def.castSeconds ~= nil
+			and not isSecondsIn(def.castSeconds, VerseCatalog.MAX_CAST_SECONDS)
+		then
 			problem(
-				id .. ": cooldownSteps must be an integer in 0.." .. VerseCatalog.MAX_COOLDOWN_STEPS
+				id
+					.. ": castSeconds must be within 0.."
+					.. VerseCatalog.MAX_CAST_SECONDS
+					.. " seconds"
 			)
+		end
+		if not isSecondsIn(def.cooldownSeconds, VerseCatalog.MAX_COOLDOWN_SECONDS) then
+			problem(
+				id
+					.. ": cooldownSeconds must be within 0.."
+					.. VerseCatalog.MAX_COOLDOWN_SECONDS
+					.. " seconds"
+			)
+		end
+		if
+			def.dissonance ~= nil
+			and (
+				not isFinite(def.dissonance)
+				or def.dissonance < 0
+				or def.dissonance > VerseCatalog.MAX_DISSONANCE
+			)
+		then
+			problem(id .. ": dissonance must be within 0.." .. VerseCatalog.MAX_DISSONANCE)
+		end
+		-- A canonical Verse is complete: no value it needs is left unset.
+		if
+			def.mechanics == "canonical"
+			and (def.costs == nil or def.castSeconds == nil or def.dissonance == nil)
+		then
+			problem(id .. ": a canonical Verse needs costs, castSeconds and dissonance")
 		end
 
 		local prereq = def.prerequisites
@@ -326,6 +362,11 @@ function VerseCatalog.build(definitions: { Definition }, canon: ContentRegistry.
 		return def ~= nil and def.cantId == cantId
 	end
 
+	function catalog:isCastable(verseId: string): boolean
+		local def = byId[verseId]
+		return def ~= nil and def.costs ~= nil and def.castSeconds ~= nil
+	end
+
 	function catalog:prerequisitesMet(verseId: string, facts: Facts): boolean
 		local def = byId[verseId]
 		if def == nil then
@@ -351,7 +392,55 @@ end
 
 -- Production definitions: none until the canonical Verse inventory names
 -- them (BM-066).
-local PRODUCTION: { Definition } = {}
+-- Seconds to whole simulation steps, rounded to the nearest step.
+function VerseCatalog.toSteps(seconds: number, stepSeconds: number): number
+	return math.max(0, math.floor(seconds / stepSeconds + 0.5))
+end
+
+-- The production definitions: the four Nearness Verses.
+--
+-- Cooldowns are confirmed by the design (approved 2026-11-16). Costs, cast
+-- times, ranges, durations, strength and Dissonance gain are NOT yet
+-- approved, so they are left unset and the Verses cannot be cast. They are
+-- registered so that IDs, ownership, compatibility and cooldown data are
+-- real; the proposed starting values are in docs/decision-sheet.md and are
+-- not used by any code.
+--
+-- What each Verse does, from the design:
+--   Close Step   shortens the path to a valid point and lunges toward it
+--   Draw Near    pulls an eligible enemy or object toward an anchor
+--   Between Us   creates a temporary adjacency tether between two targets
+--   No Farther   creates a temporary zone that compresses escape distance
+local PRODUCTION: { Definition } = {
+	{
+		id = "near.close_step",
+		cantId = "cant.nearness",
+		cooldownSeconds = 7,
+		prerequisites = { verseIds = {} },
+		mechanics = "provisional",
+	},
+	{
+		id = "near.draw_near",
+		cantId = "cant.nearness",
+		cooldownSeconds = 11,
+		prerequisites = { verseIds = {} },
+		mechanics = "provisional",
+	},
+	{
+		id = "near.between_us",
+		cantId = "cant.nearness",
+		cooldownSeconds = 16,
+		prerequisites = { verseIds = {} },
+		mechanics = "provisional",
+	},
+	{
+		id = "near.no_farther",
+		cantId = "cant.nearness",
+		cooldownSeconds = 24,
+		prerequisites = { verseIds = {} },
+		mechanics = "provisional",
+	},
+}
 
 local production: Catalog? = nil
 
