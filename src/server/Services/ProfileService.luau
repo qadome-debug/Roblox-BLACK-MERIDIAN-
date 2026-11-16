@@ -25,6 +25,7 @@ local Logger = require(script.Parent.Parent.Logging.Logger)
 local Migrations = require(script.Parent.Parent.Persistence.Migrations)
 local Profile = require(ReplicatedStorage.Shared.Types.Profile)
 local ProfileLoader = require(script.Parent.Parent.Persistence.ProfileLoader)
+local ProfileSchema = require(script.Parent.Parent.Persistence.ProfileSchema)
 local ProfileStore = require(script.Parent.Parent.Persistence.ProfileStore)
 local ReceiptCapacity = require(script.Parent.Parent.Persistence.ReceiptCapacity)
 local Receipts = require(script.Parent.Parent.Persistence.Receipts)
@@ -78,6 +79,14 @@ export type Service = {
 	tick: (self: Service) -> (),
 	shutdown: (self: Service) -> (),
 	keyFor: (self: Service, userId: number) -> string,
+	-- The live profile of a ready player, or nil. Callers must not mutate
+	-- it; use `mutate`.
+	profileFor: (self: Service, userId: number) -> Profile.PlayerProfile?,
+	-- Applies a pure, idempotent mutation to a ready player's profile and
+	-- queues it for saving. Refused (with a fixed reason) when the player
+	-- is not ready, the result fails the schema, or the queue is full; the
+	-- live profile is then unchanged.
+	mutate: (self: Service, userId: number, mutation: SaveQueue.Mutation) -> (boolean, string?),
 }
 
 local ProfileService = {}
@@ -218,6 +227,48 @@ function ProfileService.new(deps: Deps): Service
 
 	function service:get(player: PlayerLike): Entry?
 		return entries[player]
+	end
+
+	local function readyEntry(userId: number): Entry?
+		for player, entry in entries do
+			if player.UserId == userId and entry.state == "ready" and entry.profile ~= nil then
+				return entry
+			end
+		end
+		return nil
+	end
+
+	function service:profileFor(userId: number): Profile.PlayerProfile?
+		local entry = readyEntry(userId)
+		return if entry ~= nil then entry.profile else nil
+	end
+
+	function service:mutate(userId: number, mutation: SaveQueue.Mutation): (boolean, string?)
+		local entry = readyEntry(userId)
+		if entry == nil then
+			return false, "profile not ready"
+		end
+		local current = entry.profile :: Profile.PlayerProfile
+		local ok, nextProfile = pcall(mutation.apply, current)
+		if not ok then
+			deps.logger:with({ playerId = userId }):error(
+				"persistence",
+				"mutation_crashed",
+				{ id = mutation.id, error = tostring(nextProfile) }
+			)
+			return false, "mutation failed"
+		end
+		if nextProfile == nil then
+			return true, nil
+		end
+		if not ProfileSchema.isValid(nextProfile) then
+			return false, "invalid profile"
+		end
+		if not queue:enqueue(entry.target.key, mutation) then
+			return false, "save queue full"
+		end
+		entry.profile = nextProfile
+		return true, nil
 	end
 
 	function service:tick()

@@ -58,6 +58,20 @@ export type CombatInputResultData = {
 	target: string?,
 }
 
+-- Cant equipment. Owning task BM-064. `cantId` nil unequips the slot.
+export type CantSlot = "primary" | "secondary"
+
+export type CantEquipPayload = {
+	slot: CantSlot,
+	cantId: string?, -- canonical cant id
+}
+
+export type CantEquipResultData = {
+	slot: CantSlot,
+	cantId: string?,
+	changed: boolean,
+}
+
 -- Session bootstrap. Owning task BM-017.
 export type ClientHelloPayload = {
 	protocolVersion: number,

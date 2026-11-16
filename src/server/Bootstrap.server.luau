@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local CantEquip = require(script.Parent.Network.Adapters.CantEquip)
 local CharacterService = require(script.Parent.Services.CharacterService)
 local ClientHello = require(script.Parent.Network.Adapters.ClientHello)
 local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
@@ -210,6 +211,7 @@ local dispatcher = Dispatcher.new({
 })
 dispatcher:register(ClientHello.new({ sessions = sessions, clock = clock }))
 dispatcher:register(CombatInput.new({ combat = combat }))
+dispatcher:register(CantEquip.new({ profiles = profiles, combat = combat }))
 dispatcher:attach(remotes[Protocol.REMOTES.ACTION_REQUEST], remotes[Protocol.REMOTES.ACTION_RESULT])
 
 -- Stage 5: player sessions and profiles.

@@ -190,4 +190,52 @@ suite:case("the test environment is read-only end to end", function(env)
 	Assert.equal(env.dataStores:callCount("UpdateAsync"), 0, "no writes at all")
 end)
 
+suite:case("mutate changes the live profile, saves it, and refuses invalid results", function(env)
+	local service, sessions = make(env, "job-a")
+	local p = player(1)
+	sessions:onPlayerAdded(p)
+	service:onPlayerAdded(p)
+	local function setEquipped(id: string?): any
+		return {
+			id = "test-equip:" .. tostring(id),
+			apply = function(profile: any): any
+				local nextProfile = table.clone(profile)
+				nextProfile.cants = table.clone(profile.cants)
+				nextProfile.cants.equipped = id
+				return nextProfile
+			end,
+		}
+	end
+	local ok, reason = service:mutate(1, setEquipped("cant-nearness"))
+	Assert.isFalse(ok, "equipping an unowned Cant fails the schema")
+	Assert.equal(reason, "invalid profile", "reason")
+	Assert.isNil((service:profileFor(1) :: any).cants.equipped, "live profile unchanged")
+
+	local unlock = {
+		id = "test-unlock",
+		apply = function(profile: any): any
+			local nextProfile = table.clone(profile)
+			nextProfile.cants = table.clone(profile.cants)
+			nextProfile.cants.unlocked = { ["cant-nearness"] = true }
+			nextProfile.cants.verses = { ["cant-nearness"] = {} }
+			return nextProfile
+		end,
+	}
+	Assert.isTrue((service:mutate(1, unlock :: any)), "unlock")
+	Assert.isTrue((service:mutate(1, setEquipped("cant-nearness"))), "equip")
+	Assert.equal((service:profileFor(1) :: any).cants.equipped, "cant-nearness", "live")
+	service:tick()
+	Assert.equal(
+		env.dataStores:peek(storeName(), "p:1").cants.equipped,
+		"cant-nearness",
+		"saved by the queue"
+	)
+	Assert.isFalse((service:mutate(2, unlock :: any)), "unknown player refused")
+	service:onPlayerRemoving(p)
+	Assert.isNil(service:profileFor(1), "gone after leave")
+	local okAfter, why = service:mutate(1, unlock :: any)
+	Assert.isFalse(okAfter, "refused after leave")
+	Assert.equal(why, "profile not ready", "reason")
+end)
+
 return suite:cases()
