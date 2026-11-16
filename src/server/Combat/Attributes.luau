@@ -6,6 +6,11 @@
 -- validated modifiers from Burdens and equipment. The derivation is pure
 -- and deterministic: the same base and modifiers always give the same
 -- numbers, and every result is clamped to its cap.
+--
+-- NOT CANON: the four attribute names, the derived statistics and every
+-- formula and number here are engineering defaults chosen so the combat
+-- core could be built and tested. The design has not supplied them. They
+-- are to be confirmed or replaced (docs/design-requests.md, item 3).
 
 export type BaseKey = "vigor" | "might" | "grace" | "will"
 

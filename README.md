@@ -172,13 +172,24 @@ checks through the real client network path and shows `ok` / `FAIL` lines
 on screen and in the Output window with a `[PT]` prefix. The harness lives
 in `src/tests/Playtest/`; the latest results are in `docs/reviews/`.
 
+To keep the session open after the scripted run, so the place can be
+walked around by hand, set the `PlaytestStayOpen` attribute on Workspace
+to `true` before pressing Play.
+
+The harness has privileged shortcuts and must never ship.
+`tools/check-production.luau` (part of `check-all`) fails the build if the
+production project mounts anything from `src/tests`, if production source
+reaches for the harness outside the two Studio-only blocks, or if the
+harness loses its own Studio guard.
+
 ## Documents
 
 | File                          | Purpose                                                        |
 | ----------------------------- | -------------------------------------------------------------- |
 | `docs/technical-plan-2.0.md`  | The 136-task engineering plan this repository follows          |
 | `docs/architecture.md`        | Service ownership, layer rules, dependency injection, authority |
-| `docs/task-log.md`            | Which tasks are done, with evidence, and current blockers       |
+| `docs/task-log.md`            | Which tasks are built and accepted, with evidence and blockers  |
+| `docs/design-requests.md`     | The design information still needed, by task                    |
 | `docs/content-registry.md`    | Canonical content ID rules and what the registry validates     |
 | `docs/ci.md`                  | What CI runs, its security posture, and branch protection      |
 

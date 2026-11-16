@@ -21,6 +21,7 @@ before committing. The steps, in order:
 | remotes                   | `lune run tools/check-remotes.luau`                    | a remote is created outside `Network/Remotes.luau` |
 | persistence               | `lune run tools/check-persistence.luau`                | a DataStore write outside `Persistence/{Lease,ProfileStore}` |
 | test isolation            | `lune run tools/check-tests.luau`                      | a test names a live service or wall clock    |
+| production isolation     | `lune run tools/check-production.luau`                 | the production build contains test or play-test code, or a Studio guard is missing (also run against the play-test project, where it must fail) |
 | tests                     | `lune run tools/run-tests.luau`                        | any test fails                               |
 | failing fixture           | `lune run tools/run-tests.luau --root tools/fixtures/tests/failing` | the runner does NOT fail (negative fixture) |
 | build                     | `rojo build default.project.json`                      | the place cannot be built                    |

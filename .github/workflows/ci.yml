@@ -83,5 +83,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BlackMeridian.rbxl
-          path: BlackMeridian.rbxl
+          path: build/BlackMeridian.rbxl
           retention-days: 7

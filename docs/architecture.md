@@ -263,3 +263,9 @@ It adds no remote to the game's remote folder and no gameplay rule.
 
 `Services/Loadout` copies the saved equipped Cant from the profile into the
 combat layer whenever the profile becomes ready or the combatant is added.
+
+The seam is audited on every run by `tools/check-production.luau`: the
+production project must mount nothing from `src/tests`, the harness may be
+looked up only inside the Studio-only blocks of the two Bootstrap scripts,
+and the harness must keep its own `IsStudio` guard. The same audit is run
+against the play-test project and must fail there.

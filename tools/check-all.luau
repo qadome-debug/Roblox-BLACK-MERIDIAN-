@@ -9,6 +9,7 @@
 -- Steps marked "expect failure" are negative fixtures: the check must fail
 -- on them, which proves the check can fail at all.
 
+local fs = require("@lune/fs")
 local process = require("@lune/process")
 
 type Step = {
@@ -43,6 +44,7 @@ local ANALYZE_TOOLS = {
 	"tools/check-contracts.luau",
 	"tools/check-remotes.luau",
 	"tools/check-persistence.luau",
+	"tools/check-production.luau",
 	"tools/check-tests.luau",
 	"tools/run-tests.luau",
 	"tools/host",
@@ -68,6 +70,17 @@ local steps: { Step } = {
 	{ name = "remotes", program = "lune", args = { "run", "tools/check-remotes.luau" } },
 	{ name = "persistence", program = "lune", args = { "run", "tools/check-persistence.luau" } },
 	{ name = "test isolation", program = "lune", args = { "run", "tools/check-tests.luau" } },
+	{
+		name = "production isolation",
+		program = "lune",
+		args = { "run", "tools/check-production.luau" },
+	},
+	{
+		name = "production isolation (expect failure on the play-test build)",
+		program = "lune",
+		args = { "run", "tools/check-production.luau", "--project", "playtest.project.json" },
+		expectFailure = true,
+	},
 	{ name = "tests", program = "lune", args = { "run", "tools/run-tests.luau" } },
 	{
 		name = "failing fixture (expect failure)",
@@ -78,10 +91,15 @@ local steps: { Step } = {
 }
 
 if not quick then
+	if not fs.isDir("build") then
+		fs.writeDir("build")
+	end
 	table.insert(steps, {
 		name = "build",
 		program = "rojo",
-		args = { "build", "default.project.json", "--output", "BlackMeridian.rbxl" },
+		-- Built into build/, never over a place file someone may have open
+		-- and edited in Studio.
+		args = { "build", "default.project.json", "--output", "build/BlackMeridian.rbxl" },
 	})
 end
 
