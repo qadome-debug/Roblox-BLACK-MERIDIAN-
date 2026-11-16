@@ -13,6 +13,12 @@
 -- intent for the reconciliation worker to retry or escalate; nothing is
 -- ever paid twice and nothing certified is silently lost.
 --
+-- Archived receipts (BM-047): a permanent receipt may have been moved to an
+-- archive record. Duplicate checks read the profile and every archive it
+-- lists. When that cannot be done (store or archive unreadable) the intent
+-- is still recorded, so the reward stays owed, but the grant itself is
+-- refused inside the write until the archives can be read.
+--
 -- Compensation (BM-040) is a grant whose receipt is derived from an
 -- operator case ID, so repeating a case is a no-op, and every one is
 -- logged with the operator and reason.
@@ -136,6 +142,20 @@ function RewardService.new(deps: Deps): Service
 		deps.telemetry:track(event, merged)
 	end
 
+	-- Flushes the key and reports what happened to ONE mutation. The queue
+	-- drops a mutation that raises and still writes the others, so a
+	-- "rejected" flush only concerns this mutation when it is in the list
+	-- of dropped IDs (or when the whole batch was dropped).
+	local function flushFor(key: string, mutationId: string): (SaveQueue.FlushOutcome, string?)
+		local outcome: SaveQueue.FlushOutcome, detail: string?, dropped: { string }? =
+			deps.queue:flush(key)
+		if outcome == "rejected" and dropped ~= nil and table.find(dropped, mutationId) == nil then
+			local committed: SaveQueue.FlushOutcome = "committed"
+			return committed, nil
+		end
+		return outcome, detail
+	end
+
 	-- Runs the two-step flow. `build` makes the grant mutation.
 	local function execute(
 		target: Target,
@@ -167,7 +187,7 @@ function RewardService.new(deps: Deps): Service
 		if not deps.queue:enqueue(target.key, intent) then
 			return { outcome = "pending", receiptId = receiptId, reason = "queue full" }
 		end
-		local intentOutcome = deps.queue:flush(target.key)
+		local intentOutcome = flushFor(target.key, intent.id)
 		if intentOutcome ~= "committed" then
 			-- Intent not durably recorded yet; the queue keeps it and the
 			-- worker will finish. The reward is owed, not lost.
@@ -183,7 +203,7 @@ function RewardService.new(deps: Deps): Service
 		if not deps.queue:enqueue(target.key, grant) then
 			return { outcome = "pending", receiptId = receiptId, reason = "queue full" }
 		end
-		local outcome, detail = deps.queue:flush(target.key)
+		local outcome, detail = flushFor(target.key, grant.id)
 		if outcome == "committed" then
 			-- "committed" covers both "written now" and "already applied".
 			log(
@@ -231,44 +251,81 @@ function RewardService.new(deps: Deps): Service
 		return definition, nil
 	end
 
-	-- Archived permanent receipts per key, loaded once per session. Archives
-	-- are append-only, so the cache only grows when we archive ourselves.
-	local archivedCache: { [string]: ReceiptCapacity.ArchivedSet } = {}
+	-- Archived permanent receipts per key. The view is checked against the
+	-- archive list of the profile every time: when the profile lists an
+	-- archive the view has not read (this server archived, or another server
+	-- did while the player was away), the archives are read again. The table
+	-- is updated in place so grant mutations already holding it see the
+	-- newer view.
+	local archivedCache: { [string]: ReceiptCapacity.ArchivedView } = {}
 
-	local function archivedFor(target: Target, profile: any?): ReceiptCapacity.ArchivedSet?
-		local cached = archivedCache[target.key]
-		if cached ~= nil then
-			return cached
+	local function covers(view: ReceiptCapacity.ArchivedView, archives: { string }): boolean
+		for _, archiveKey in archives do
+			if view.covers[archiveKey] ~= true then
+				return false
+			end
 		end
-		local stored = profile or deps.profiles:read(target.key)
-		if type(stored) ~= "table" or type(stored.receipts) ~= "table" then
-			return nil
-		end
-		local set = deps.capacity.loadArchived(stored)
-		if set ~= nil then
-			archivedCache[target.key] = set
-		end
-		return set
+		return true
 	end
 
-	-- nil means "cannot tell" (store or archive unreadable): never grant then.
-	local function alreadyGranted(target: Target, receiptId: string): boolean?
+	-- nil means the archives could not be read: the caller must not pay.
+	local function archivedFor(target: Target, profile: any?): ReceiptCapacity.ArchivedView?
+		local stored = profile
+		if stored == nil then
+			stored = deps.profiles:read(target.key)
+		end
+		if
+			type(stored) ~= "table"
+			or type(stored.receipts) ~= "table"
+			or type(stored.receipts.archives) ~= "table"
+		then
+			return nil
+		end
+		local cached = archivedCache[target.key]
+		if cached ~= nil and covers(cached, stored.receipts.archives) then
+			return cached
+		end
+		local view = deps.capacity.loadArchived(stored)
+		if view == nil then
+			return nil
+		end
+		if cached == nil then
+			archivedCache[target.key] = view
+			return view
+		end
+		for id in view.receipts do
+			cached.receipts[id] = true
+		end
+		for archiveKey in view.covers do
+			cached.covers[archiveKey] = true
+		end
+		return cached
+	end
+
+	-- First value: true when the receipt is already paid, false when it is
+	-- not, nil when that cannot be told (store or archive unreadable).
+	-- Second value: the archived view to build a permanent grant with.
+	local function alreadyGranted(
+		target: Target,
+		receiptId: string
+	): (boolean?, ReceiptCapacity.ArchivedView?)
 		local stored = deps.profiles:read(target.key)
 		if type(stored) ~= "table" then
-			return nil
+			return nil, nil
 		end
 		local receipts = (stored :: any).receipts
 		if receipts == nil then
-			return nil
+			return nil, nil
 		end
 		if receipts.permanent[receiptId] == true or receipts.seasonal[receiptId] ~= nil then
-			return true
+			return true, nil
 		end
 		local archived = archivedFor(target, stored)
 		if archived == nil then
-			return nil
+			log("warn", "reward_receipts_unverifiable", target, { receiptId = receiptId })
+			return nil, nil
 		end
-		return archived[receiptId] == true
+		return archived.receipts[receiptId] == true, archived
 	end
 
 	function service:grantPermanent(target: Target, source: Source, rewardId: string): GrantResult
@@ -284,12 +341,16 @@ function RewardService.new(deps: Deps): Service
 		if receiptId == nil then
 			return { outcome = "refused", reason = "invalid source id" }
 		end
-		if alreadyGranted(target, receiptId) then
+		local paid, archived = alreadyGranted(target, receiptId)
+		if paid then
 			track("reward_duplicate", target, { rewardId = rewardId, receiptId = receiptId })
 			return { outcome = "duplicate", receiptId = receiptId }
 		end
+		-- When `paid` is nil the archives could not be read: `archived` is
+		-- nil and the grant mutation refuses to pay if the stored profile
+		-- has archives. The intent is still recorded, so the reward is owed.
 		return execute(target, receiptId, source.id, definition, function()
-			return Receipts.permanentGrant(receiptId, definition, archivedFor(target))
+			return Receipts.permanentGrant(receiptId, definition, archived)
 		end)
 	end
 
@@ -349,7 +410,8 @@ function RewardService.new(deps: Deps): Service
 			rewardId = rewardId,
 			receiptId = receiptId,
 		})
-		if alreadyGranted(target, receiptId) then
+		local paid, archived = alreadyGranted(target, receiptId)
+		if paid then
 			track(
 				"reward_compensation_duplicate",
 				target,
@@ -358,7 +420,7 @@ function RewardService.new(deps: Deps): Service
 			return { outcome = "duplicate", receiptId = receiptId }
 		end
 		local result = execute(target, receiptId, "comp-" .. operator.caseId, definition, function()
-			return Receipts.permanentGrant(receiptId, definition, archivedFor(target))
+			return Receipts.permanentGrant(receiptId, definition, archived)
 		end)
 		track(
 			"reward_compensation",
@@ -431,6 +493,8 @@ function RewardService.new(deps: Deps): Service
 
 	function service:recoverPending(target: Target, profile: Profile.PlayerProfile): number
 		local recovered = 0
+		-- Permanent grants need the archived view; without it they wait.
+		local archived = archivedFor(target, profile)
 		local ids = {}
 		for grantId in profile.receipts.pending do
 			table.insert(ids, grantId)
@@ -462,7 +526,15 @@ function RewardService.new(deps: Deps): Service
 					continue
 				end
 			else
-				mutation = Receipts.permanentGrant(grantId, definition)
+				if archived == nil then
+					log("warn", "reward_recovery_deferred", target, {
+						receiptId = grantId,
+						rewardId = definition.id,
+						detail = "archived receipts unreadable",
+					})
+					continue
+				end
+				mutation = Receipts.permanentGrant(grantId, definition, archived)
 			end
 			if mutation ~= nil and deps.queue:enqueue(target.key, mutation) then
 				recovered += 1
@@ -520,16 +592,34 @@ function RewardService.new(deps: Deps): Service
 		profile: Profile.PlayerProfile
 	): ReceiptCapacity.Report
 		local report = deps.capacity.observe(target.key, target.userId, profile)
-		if ReceiptCapacity.needsArchive(profile) then
-			local mutation, reason = deps.capacity.buildArchive(target.key, profile)
-			if mutation ~= nil and deps.queue:enqueue(target.key, mutation) then
-				local outcome = deps.queue:flush(target.key)
-				log("info", "receipt_archive_applied", target, { outcome = outcome })
-				archivedCache[target.key] = nil
-			else
-				log("error", "receipt_archive_failed", target, { detail = reason or "queue full" })
-			end
+		if not ReceiptCapacity.needsArchive(profile) then
+			return report
 		end
+		-- Archive only when the existing archives can be read: the view must
+		-- be complete before more receipts leave the profile.
+		local view = archivedFor(target, profile)
+		if view == nil then
+			log("error", "receipt_archive_failed", target, { detail = "archives unreadable" })
+			return report
+		end
+		local mutation, reason, moved = deps.capacity.buildArchive(target.key, profile)
+		if mutation == nil or moved == nil then
+			log("error", "receipt_archive_failed", target, { detail = reason or "unknown" })
+			return report
+		end
+		-- The record is durable. Count its receipts as archived from now on,
+		-- before the profile write lands: they are paid either way.
+		for _, id in moved.receipts do
+			view.receipts[id] = true
+		end
+		view.covers[moved.archiveKey] = true
+		if not deps.queue:enqueue(target.key, mutation) then
+			-- The record stays as an orphan; the next attempt adopts it.
+			log("error", "receipt_archive_failed", target, { detail = "queue full" })
+			return report
+		end
+		local outcome = flushFor(target.key, mutation.id)
+		log("info", "receipt_archive_applied", target, { outcome = outcome })
 		return report
 	end
 

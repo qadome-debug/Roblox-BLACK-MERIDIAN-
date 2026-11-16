@@ -52,6 +52,9 @@ export type Result = {
 	-- For "rejected".
 	reason: RejectReason?,
 	detail: string?,
+	-- For reason "mutation": the position in the batch of the mutation that
+	-- raised, so the caller can drop it alone.
+	failedIndex: number?,
 	-- For "committed".
 	revision: number?,
 	bytes: number?,
@@ -123,6 +126,7 @@ function ProfileStore.new(deps: Deps): Store
 
 		local rejected: RejectReason? = nil
 		local detail: string? = nil
+		local failedIndex: number? = nil
 		local committedRevision: number? = nil
 		local committedBytes: number? = nil
 		local verdictOut: ProfileSize.Verdict? = nil
@@ -146,7 +150,7 @@ function ProfileStore.new(deps: Deps): Store
 
 				local profile: PlayerProfile = old
 				local changed = false
-				for _, mutation in batch do
+				for index, mutation in batch do
 					-- A mutation that errors is a deterministic failure of the
 					-- batch (capacity, grant rules), not a store failure: the
 					-- write is cancelled and the caller gets "rejected".
@@ -154,6 +158,7 @@ function ProfileStore.new(deps: Deps): Store
 					if not okApply then
 						rejected = "mutation"
 						detail = mutation.id .. ": " .. tostring(next)
+						failedIndex = index
 						return nil
 					end
 					if next ~= nil then
@@ -207,7 +212,12 @@ function ProfileStore.new(deps: Deps): Store
 				reason = rejected :: string,
 				detail = detail or "",
 			})
-			return { outcome = "rejected", reason = rejected, detail = detail }
+			return {
+				outcome = "rejected",
+				reason = rejected,
+				detail = detail,
+				failedIndex = failedIndex,
+			}
 		end
 		if verdictOut == "soft" then
 			deps.logger:warn(

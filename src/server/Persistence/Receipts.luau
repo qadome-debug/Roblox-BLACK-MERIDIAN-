@@ -7,8 +7,12 @@
 --   permanentGrant   writes `receipts.permanent[id] = true` and applies the
 --                    grant in the same transform; a second application is
 --                    a no-op. Permanent receipts are never pruned; when the
---                    catalog is full the grant fails closed (BM-047 adds
---                    the compact migration).
+--                    ledger is full the grant fails closed. Receipts moved
+--                    to archive records (BM-047) still count: the builder
+--                    takes the archived view, and the transform refuses to
+--                    pay unless that view covers every archive the STORED
+--                    profile lists at write time. A stale or missing view
+--                    can therefore delay a grant but never pay it twice.
 --   seasonalGrant    writes `receipts.seasonal[id] = season`. Grants for a
 --                    closed season are refused before enqueue. When the
 --                    seasonal ledger is full, receipts from seasons older
@@ -44,9 +48,18 @@ export type SeasonPolicy = {
 
 export type Refusal = "capacityExhausted" | "seasonClosed" | "intentLimit" | "badId"
 
-local P = Limits.PROFILE
+-- Receipts moved out of a profile into archive records (BM-047), and the
+-- archive keys that were read to build the set.
+export type ArchivedView = {
+	receipts: { [string]: boolean },
+	covers: { [string]: boolean },
+}
 
 local Receipts = {}
+
+Receipts.ARCHIVE_NOT_LOADED = "archived receipts not loaded"
+
+local P = Limits.PROFILE
 
 local function countKeys(t: { [any]: any }): number
 	local n = 0
@@ -87,25 +100,44 @@ end
 
 -- One-time grant. Returns the mutation, or nil with a refusal when it can
 -- be decided up front.
--- `archived` is the set of receipts moved to archive records for this
--- profile (BM-047); a receipt found there is already paid.
+-- `archived` is the view of receipts moved to archive records for this
+-- profile (BM-047); a receipt found there is already paid. Without a view
+-- the grant only applies to a profile that has no archives.
 function Receipts.permanentGrant(
 	receiptId: string,
 	definition: RewardCatalog.Definition,
-	archived: { [string]: boolean }?
+	archived: ArchivedView?
 ): (Mutation?, Refusal?)
 	if not isOpaque(receiptId) then
 		return nil, "badId"
 	end
 	local issue = instanceIssuer(receiptId)
+	local function alreadyPaid(profile: PlayerProfile): boolean
+		return profile.receipts.permanent[receiptId] == true
+			or (archived ~= nil and archived.receipts[receiptId] == true)
+	end
 	return {
 		id = receiptId,
 		irreversible = true,
 		apply = function(profile: PlayerProfile): PlayerProfile?
-			if
-				profile.receipts.permanent[receiptId] or (archived ~= nil and archived[receiptId])
-			then
-				return nil
+			if profile.receipts.permanent[receiptId] ~= true then
+				-- The receipt is not in the profile, so it is new only if no
+				-- archive holds it. Every archive the stored profile lists
+				-- must have been read; otherwise fail closed.
+				for _, archiveKey in profile.receipts.archives do
+					if archived == nil or archived.covers[archiveKey] ~= true then
+						error(Receipts.ARCHIVE_NOT_LOADED)
+					end
+				end
+			end
+			if alreadyPaid(profile) then
+				if profile.receipts.pending[receiptId] == nil then
+					return nil
+				end
+				-- Paid earlier; only a leftover intent remains to clear.
+				local cleared = copyReceipts(profile)
+				cleared.receipts.pending[receiptId] = nil
+				return cleared
 			end
 			if countKeys(profile.receipts.permanent) >= P.MAX_PERMANENT_RECEIPTS then
 				-- Fail closed: no grant, no receipt, nothing pruned.
@@ -121,8 +153,7 @@ function Receipts.permanentGrant(
 			return next
 		end,
 		isApplied = function(profile: PlayerProfile): boolean
-			return profile.receipts.permanent[receiptId] == true
-				or (archived ~= nil and archived[receiptId] == true)
+			return alreadyPaid(profile) and profile.receipts.pending[receiptId] == nil
 		end,
 	},
 		nil

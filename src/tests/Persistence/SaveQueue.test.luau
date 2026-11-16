@@ -275,4 +275,37 @@ suite:case(
 	end
 )
 
+suite:case(
+	"a mutation that raises is dropped alone; the rest of the batch is written",
+	function(env)
+		local queue = make(env)
+		local bad: SaveQueue.Mutation = {
+			id = "bad",
+			apply = function(_profile)
+				error("grant rule failed")
+			end,
+		}
+		Assert.isTrue(queue:enqueue(KEY, grant("g1", 5)), "enqueue 1")
+		Assert.isTrue(queue:enqueue(KEY, bad), "enqueue bad")
+		Assert.isTrue(queue:enqueue(KEY, grant("g2", 7)), "enqueue 2")
+		local outcome, detail, dropped = queue:flush(KEY)
+		Assert.equal(outcome, "rejected", "the drop is reported")
+		Assert.contains(detail :: string, "grant rule failed", "with the reason")
+		Assert.deepEqual(dropped, { "bad" }, "only the failing mutation is named")
+		Assert.equal(balance(env), 12, "both good mutations were written")
+		Assert.equal(queue:pendingCount(KEY), 0, "nothing left queued")
+		Assert.count(env.logged("persistence", "save_queue_mutation_dropped"), 1, "logged")
+		local revision = env.dataStores:peek(STORE, KEY).revision
+
+		-- A batch made only of failing mutations writes nothing.
+		Assert.isTrue(queue:enqueue(KEY, bad), "enqueue bad again")
+		local again, _, droppedAgain = queue:flush(KEY)
+		Assert.equal(again, "rejected", "rejected")
+		Assert.deepEqual(droppedAgain, { "bad" }, "named")
+		Assert.equal(env.dataStores:peek(STORE, KEY).revision, revision, "no write")
+		Assert.equal(queue:pendingCount(KEY), 0, "queue empty")
+		Assert.equal(queue:flush(KEY), "nothingToDo", "settled")
+	end
+)
+
 return suite:cases()

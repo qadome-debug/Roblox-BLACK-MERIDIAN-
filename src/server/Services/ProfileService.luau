@@ -113,12 +113,41 @@ function ProfileService.new(deps: Deps): Service
 			return deps.clock:wallTime()
 		end,
 	})
+	local entries: { [PlayerLike]: Entry } = {}
+	-- Mutations `service:mutate` already applied to the live profile.
+	local appliedLive: { [SaveQueue.Mutation]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+	-- Keeps the live profile in step with the store: every mutation that
+	-- reaches the stored profile by another route (reward grants, recovery,
+	-- archive migration) is applied to the in-memory copy as well, so
+	-- `profileFor` never lags behind what was saved.
+	local function onWritten(key: string, batch: { SaveQueue.Mutation })
+		for _, entry in entries do
+			if entry.target.key ~= key or entry.state ~= "ready" or entry.profile == nil then
+				continue
+			end
+			local live = entry.profile :: Profile.PlayerProfile
+			for _, mutation in batch do
+				if appliedLive[mutation] then
+					appliedLive[mutation] = nil
+					continue
+				end
+				local ok, nextProfile = pcall(mutation.apply, live)
+				if ok and nextProfile ~= nil then
+					live = nextProfile
+				end
+			end
+			entry.profile = live
+		end
+	end
+
 	local queue = SaveQueue.new({
 		clock = deps.clock,
 		rng = deps.rng:fork("queue"),
 		logger = deps.logger,
 		leases = leases,
 		profiles = profiles,
+		onWritten = onWritten,
 	})
 	local loader = ProfileLoader.new({
 		clock = deps.clock,
@@ -147,7 +176,6 @@ function ProfileService.new(deps: Deps): Service
 		seasons = deps.seasons or { currentSeason = 1, retainedSeasons = 1 },
 	})
 
-	local entries: { [PlayerLike]: Entry } = {}
 	local lastReconcile = deps.clock:now()
 
 	local service = {} :: Service
@@ -267,6 +295,7 @@ function ProfileService.new(deps: Deps): Service
 		if not queue:enqueue(entry.target.key, mutation) then
 			return false, "save queue full"
 		end
+		appliedLive[mutation] = true
 		entry.profile = nextProfile
 		return true, nil
 	end

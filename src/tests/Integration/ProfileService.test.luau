@@ -62,6 +62,14 @@ local function player(id: number): Session.PlayerLike
 	return { UserId = id, Name = "p" .. id }
 end
 
+local function count(t: { [any]: any }): number
+	local n = 0
+	for _ in t do
+		n += 1
+	end
+	return n
+end
+
 local function storeName(): string
 	return ProfileService.STORE_NAME .. "/" .. Config.build("studio").dataStoreScope
 end
@@ -84,6 +92,16 @@ suite:case(
 			"reward-quest"
 		)
 		Assert.equal(result.outcome, "granted", "rewards work through the service")
+		-- The live profile follows the store: a reward is visible at once,
+		-- not only after a rejoin.
+		local live = service:profileFor(1) :: any
+		Assert.equal(live.balances["currency-test"], 10, "live profile shows the reward")
+		Assert.equal(
+			live.receipts.permanent[result.receiptId :: string],
+			true,
+			"live profile shows the receipt"
+		)
+		Assert.equal(count(live.receipts.pending), 0, "live profile shows the intent cleared")
 
 		service:onPlayerRemoving(p)
 		Assert.isNil(service:get(p), "entry dropped")

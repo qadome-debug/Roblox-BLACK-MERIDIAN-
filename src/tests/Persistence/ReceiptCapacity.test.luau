@@ -121,11 +121,12 @@ suite:case(
 		Assert.count(ProfileSchema.validate(after), 0, "still valid")
 
 		-- Every receipt is in exactly one place.
-		local archived = monitor.loadArchived(after) :: { [string]: boolean }
+		local archived = monitor.loadArchived(after) :: ReceiptCapacity.ArchivedView
+		Assert.isTrue(archived.covers[archiveKey], "the view covers the archive")
 		for i = 1, total do
 			local id = string.format("p:quest:q%04d:reward-gold", i)
 			local inProfile = after.receipts.permanent[id] == true
-			local inArchive = archived[id] == true
+			local inArchive = archived.receipts[id] == true
 			Assert.isTrue(inProfile ~= inArchive, id .. " must be in exactly one place")
 		end
 		Assert.isNil(after.receipts.permanent["p:quest:q0001:reward-gold"], "oldest id archived")
@@ -150,8 +151,8 @@ suite:case("an archived receipt still blocks a duplicate grant", function(env)
 	queue:enqueue(KEY, mutation)
 	queue:flush(KEY)
 	local after = env.dataStores:peek(STORE, KEY)
-	local archived = monitor.loadArchived(after) :: { [string]: boolean }
-	Assert.equal(archived["p:quest:q0001:reward-gold"], true, "archived")
+	local archived = monitor.loadArchived(after) :: ReceiptCapacity.ArchivedView
+	Assert.equal(archived.receipts["p:quest:q0001:reward-gold"], true, "archived")
 
 	local grant =
 		Receipts.permanentGrant("p:quest:q0001:reward-gold", GOLD, archived) :: SaveQueue.Mutation
@@ -160,10 +161,24 @@ suite:case("an archived receipt still blocks a duplicate grant", function(env)
 	Assert.isNil(env.dataStores:peek(STORE, KEY).balances["currency-test"], "not paid again")
 	Assert.isTrue((grant.isApplied :: any)(after), "isApplied sees the archive")
 
-	-- Without the archived set, the same grant would pay: the service must
-	-- always pass it. This documents the contract.
+	-- Without the archived view the builder cannot see the archive, so the
+	-- write itself refuses: a profile that lists archives is never paid by
+	-- a grant that has not read them.
 	local naive = Receipts.permanentGrant("p:quest:q0001:reward-gold", GOLD) :: SaveQueue.Mutation
 	Assert.isFalse((naive.isApplied :: any)(after), "naive builder cannot see archives")
+	queue:enqueue(KEY, naive)
+	local outcome, detail = queue:flush(KEY)
+	Assert.equal(outcome, "rejected", "refused inside the write")
+	Assert.contains(detail :: string, Receipts.ARCHIVE_NOT_LOADED, "reason")
+	Assert.isNil(env.dataStores:peek(STORE, KEY).balances["currency-test"], "still not paid")
+
+	-- A view that has read only some of the archives is refused the same way.
+	local partial: ReceiptCapacity.ArchivedView = { receipts = {}, covers = {} }
+	local stale =
+		Receipts.permanentGrant("p:quest:q0001:reward-gold", GOLD, partial) :: SaveQueue.Mutation
+	queue:enqueue(KEY, stale)
+	Assert.equal(queue:flush(KEY), "rejected", "stale view refused")
+	Assert.isNil(env.dataStores:peek(STORE, KEY).balances["currency-test"], "never paid")
 end)
 
 suite:case("archive failures never touch the profile", function(env)

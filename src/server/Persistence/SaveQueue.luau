@@ -18,6 +18,9 @@
 --     every mutation can report whether it is applied, settles the
 --     operation without another write; otherwise the next flush re-applies
 --     the same mutations, which must therefore be idempotent,
+--   * a mutation that raises (capacity, grant rule) is dropped alone and
+--     reported; the mutations queued with it are written in the same flush,
+--     so one failing grant never takes another mutation down with it,
 --   * a batch that can never succeed (schema or size) is dropped and
 --     reported; the stored profile is untouched.
 
@@ -60,6 +63,9 @@ export type Deps = {
 	profiles: ProfileStore.Store,
 	maxPending: number?,
 	backoff: { number }?,
+	-- Called with the mutations of a batch once they are known to be in the
+	-- stored profile (written now, or found already applied), in order.
+	onWritten: ((key: string, batch: { Mutation }) -> ())?,
 	softBytes: number?,
 	hardBytes: number?,
 }
@@ -68,7 +74,10 @@ export type Queue = {
 	track: (self: Queue, key: string, handle: Lease.Handle) -> (),
 	untrack: (self: Queue, key: string) -> (),
 	enqueue: (self: Queue, key: string, mutation: Mutation) -> boolean,
-	flush: (self: Queue, key: string) -> (FlushOutcome, string?),
+	-- The third value lists the IDs of mutations dropped because they
+	-- raised. With "rejected" and a list, every mutation NOT in the list
+	-- was written; with "rejected" and no list, the whole batch was dropped.
+	flush: (self: Queue, key: string) -> (FlushOutcome, string?, { string }?),
 	flushAll: (self: Queue) -> (),
 	-- Tries to settle an uncertain operation by reading. "settled" means
 	-- the batch was found applied and drained; "retry" means the next
@@ -114,6 +123,12 @@ function SaveQueue.new(deps: Deps): Queue
 		state.nextAttemptAt = 0
 	end
 
+	local function written(key: string, batch: { Mutation })
+		if deps.onWritten ~= nil then
+			deps.onWritten(key, batch)
+		end
+	end
+
 	function queue:track(key: string, handle: Lease.Handle)
 		keys[key] = {
 			handle = handle,
@@ -152,18 +167,14 @@ function SaveQueue.new(deps: Deps): Queue
 		return true
 	end
 
-	function queue:flush(key: string): (FlushOutcome, string?)
-		local state = keys[key]
-		if state == nil or #state.pending == 0 then
-			return "nothingToDo", nil
-		end
+	local function flushOnce(key: string, state: KeyState): (FlushOutcome, string?, number?)
 		local now = deps.clock:wallTime()
 		if now < state.nextAttemptAt then
-			return "backoff", string.format("next attempt at %d", state.nextAttemptAt)
+			return "backoff", string.format("next attempt at %d", state.nextAttemptAt), nil
 		end
 		if not deps.leases:isValid(state.handle) then
 			log("error", "save_queue_no_lease", key, { pending = #state.pending })
-			return "noLease", "lease not valid"
+			return "noLease", "lease not valid", nil
 		end
 
 		-- An operation in flight keeps its batch and ID across retries; a
@@ -194,7 +205,7 @@ function SaveQueue.new(deps: Deps): Queue
 				pending = #state.pending,
 				error = result.detail or "",
 			})
-			return "uncertain", result.detail
+			return "uncertain", result.detail, nil
 		end
 
 		if result.outcome == "rejected" then
@@ -206,7 +217,12 @@ function SaveQueue.new(deps: Deps): Queue
 					key,
 					{ operation = operation.id, pending = #state.pending }
 				)
-				return "noLease", result.detail
+				return "noLease", result.detail, nil
+			end
+			if result.reason == "mutation" and result.failedIndex ~= nil then
+				-- Nothing was written. The caller drops this one mutation and
+				-- flushes the rest of the operation again.
+				return "rejected", result.detail, result.failedIndex
 			end
 			if result.reason == "noop" then
 				-- Everything in the batch was already applied (for example a
@@ -218,7 +234,8 @@ function SaveQueue.new(deps: Deps): Queue
 					key,
 					{ operation = operation.id, mutations = #batch }
 				)
-				return "committed", nil
+				written(key, batch)
+				return "committed", nil, nil
 			end
 			log("error", "save_queue_rejected", key, {
 				operation = operation.id,
@@ -227,7 +244,7 @@ function SaveQueue.new(deps: Deps): Queue
 				dropped = #batch,
 			})
 			drain(state, #batch)
-			return "rejected", result.detail
+			return "rejected", result.detail, nil
 		end
 
 		drain(state, #batch)
@@ -237,7 +254,46 @@ function SaveQueue.new(deps: Deps): Queue
 			mutations = #batch,
 			revision = result.revision or -1,
 		})
-		return "committed", nil
+		written(key, batch)
+		return "committed", nil, nil
+	end
+
+	function queue:flush(key: string): (FlushOutcome, string?, { string }?)
+		local state = keys[key]
+		if state == nil or #state.pending == 0 then
+			return "nothingToDo", nil, nil
+		end
+		local dropped: { string }? = nil
+		local firstDetail: string? = nil
+		local REJECTED: FlushOutcome = "rejected"
+		while true do
+			local result: FlushOutcome, detail: string?, failedIndex: number? =
+				flushOnce(key, state)
+			if failedIndex == nil then
+				if dropped ~= nil and result == "committed" then
+					-- The rest landed; report the drop to the caller.
+					return REJECTED, firstDetail, dropped
+				end
+				return result, detail, dropped
+			end
+			local operation = state.operation :: Operation
+			local failed = table.remove(state.pending, failedIndex) :: Mutation
+			operation.size -= 1
+			local list: { string } = dropped or {}
+			table.insert(list, failed.id)
+			dropped = list
+			firstDetail = firstDetail or detail
+			log("error", "save_queue_mutation_dropped", key, {
+				operation = operation.id,
+				mutation = failed.id,
+				detail = detail or "",
+				remaining = operation.size,
+			})
+			if operation.size == 0 then
+				drain(state, 0)
+				return REJECTED, firstDetail, dropped
+			end
+		end
 	end
 
 	function queue:reconcile(key: string): ("settled" | "retry" | "nothingToDo", string?)
@@ -256,6 +312,7 @@ function SaveQueue.new(deps: Deps): Queue
 				key,
 				{ operation = operation.id, mutations = #batch }
 			)
+			written(key, batch)
 			return "settled", nil
 		end
 		-- "notApplied" or "unknown": the next flush re-applies idempotently.

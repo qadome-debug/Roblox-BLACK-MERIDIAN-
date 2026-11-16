@@ -40,6 +40,9 @@ local Playtest = {}
 -- which is unavailable in an unpublished place), so the degraded mode can
 -- be play-tested.
 function Playtest.stores(): any?
+	if not RunService:IsStudio() then
+		error("the play-test harness only runs in Studio")
+	end
 	if Workspace:GetAttribute("PlaytestDegraded") == true then
 		return nil
 	end
@@ -205,6 +208,12 @@ function Playtest.start(services: { [string]: any })
 				tostring(failed)
 			)
 		)
+		-- With the PlaytestStayOpen attribute set on Workspace, the session
+		-- stays open after the scripted run, so the place can be looked at
+		-- and walked around by hand.
+		if Workspace:GetAttribute("PlaytestStayOpen") == true then
+			return { ok = true }
+		end
 		task.delay(1, function()
 			pcall(function()
 				(game:GetService("StudioTestService") :: any):EndTest(

@@ -11,12 +11,24 @@
 --   2. only then are those receipts removed from the profile in a
 --      lease-guarded mutation that also appends the archive key,
 --   3. duplicate checks consult the profile AND its archives: the service
---      loads every archive for a key once per session (`ArchivedSet`) and
---      hands it to the grant mutations, which refuse archived receipts.
+--      loads every archive a profile lists into an `ArchivedView` and hands
+--      it to the grant mutations, which refuse to pay unless the view
+--      covers every archive the stored profile lists at write time.
 --
--- A crash between 1 and 2 leaves an orphan archive record (harmless: the
--- receipts are still in the profile). Capacity exhaustion with no
--- archivable receipts fails closed, as before.
+-- Failure cases:
+--   * Crash, lost response or a dropped profile write between 1 and 2
+--     leaves an orphan archive record. The receipts are still in the
+--     profile, so nothing is lost and nothing can be paid twice. The next
+--     attempt finds the record under the same key and ADOPTS it (it moves
+--     exactly the receipts the record holds) instead of writing a new one,
+--     so an orphan never blocks archiving.
+--   * An archive record that cannot be read makes `loadArchived` return
+--     nil. Callers must not pay a permanent grant then; the grant stays
+--     owed (pending intent) until the record can be read again.
+--   * A record under the expected key that does not belong to the profile,
+--     or holds receipts the profile does not have, is a conflict: nothing
+--     is archived and the error is logged for an operator.
+--   * Capacity exhaustion with nothing archivable fails closed, as before.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -24,6 +36,7 @@ local Limits = require(ReplicatedStorage.Shared.Constants.Limits)
 local Logger = require(script.Parent.Parent.Logging.Logger)
 local Profile = require(ReplicatedStorage.Shared.Types.Profile)
 local ProfileStore = require(script.Parent.ProfileStore)
+local Receipts = require(script.Parent.Receipts)
 local Telemetry = require(script.Parent.Parent.Logging.Telemetry)
 
 type PlayerProfile = Profile.PlayerProfile
@@ -34,7 +47,10 @@ export type Gauge = { count: number, max: number, fraction: number, level: Level
 
 export type Report = { permanent: Gauge, seasonal: Gauge, pending: Gauge, archives: number }
 
-export type ArchivedSet = { [string]: boolean }
+export type ArchivedView = Receipts.ArchivedView
+
+-- What an archive attempt moved: the record key and the receipt IDs in it.
+export type Moved = { archiveKey: string, receipts: { string } }
 
 export type Deps = {
 	logger: Logger.Logger,
@@ -119,11 +135,11 @@ function ReceiptCapacity.new(deps: Deps)
 		return report
 	end
 
-	-- Loads every archive for a key into one set. Returns nil on a store
-	-- failure, in which case the caller must not grant (it cannot prove a
-	-- receipt is new).
-	function monitor.loadArchived(profile: PlayerProfile): ArchivedSet?
-		local set: ArchivedSet = {}
+	-- Loads every archive a profile lists into one view. Returns nil on a
+	-- store failure or a damaged record, in which case the caller must not
+	-- pay a permanent grant (it cannot prove a receipt is new).
+	function monitor.loadArchived(profile: PlayerProfile): ArchivedView?
+		local view: ArchivedView = { receipts = {}, covers = {} }
 		for _, archiveKey in profile.receipts.archives do
 			local okRead, record = pcall(function()
 				return deps.archiveStore:GetAsync(archiveKey)
@@ -137,60 +153,126 @@ function ReceiptCapacity.new(deps: Deps)
 				return nil
 			end
 			for id in record.receipts do
-				set[id] = true
+				view.receipts[id] = true
 			end
+			view.covers[archiveKey] = true
 		end
-		return set
+		return view
+	end
+
+	-- Reads the record under `archiveKey`. Returns (true, record or nil) or
+	-- (false, nil) when the store cannot be read.
+	local function readRecord(archiveKey: string): (boolean, any)
+		local okRead, record = pcall(function()
+			return deps.archiveStore:GetAsync(archiveKey)
+		end)
+		if not okRead then
+			return false, nil
+		end
+		return true, record
+	end
+
+	-- The receipt IDs of an existing record, when it can safely be adopted
+	-- for this profile: it names this profile and every receipt in it is
+	-- still in the profile's permanent ledger.
+	local function adoptable(profileKey: string, profile: PlayerProfile, record: any): { string }?
+		if
+			type(record) ~= "table"
+			or record.profileKey ~= profileKey
+			or type(record.receipts) ~= "table"
+		then
+			return nil
+		end
+		local list: { string } = {}
+		for id, flag in record.receipts do
+			if type(id) ~= "string" or flag ~= true or profile.receipts.permanent[id] ~= true then
+				return nil
+			end
+			table.insert(list, id)
+		end
+		if #list == 0 or record.count ~= #list then
+			return nil
+		end
+		table.sort(list)
+		return list
 	end
 
 	-- Moves the oldest half of the permanent receipts into a new archive
 	-- record. Returns a mutation to enqueue (which removes them from the
 	-- profile and appends the archive key) or nil with a reason. The archive
-	-- record is written durably before this returns.
+	-- record is durable and confirmed before this returns; the third value
+	-- says what it holds.
 	function monitor.buildArchive(
 		profileKey: string,
 		profile: PlayerProfile
-	): (ProfileStore.Mutation?, string?)
+	): (ProfileStore.Mutation?, string?, Moved?)
 		if #profile.receipts.archives >= ReceiptCapacity.MAX_ARCHIVES then
-			return nil, "archive limit reached"
-		end
-		local ids = {}
-		for id in profile.receipts.permanent do
-			table.insert(ids, id)
-		end
-		if #ids < 2 then
-			return nil, "nothing to archive"
-		end
-		table.sort(ids)
-		local moving: { [string]: boolean } = {}
-		local movingList: { string } = {}
-		for i = 1, math.floor(#ids / 2) do
-			moving[ids[i]] = true
-			table.insert(movingList, ids[i])
+			return nil, "archive limit reached", nil
 		end
 		local index = #profile.receipts.archives + 1
 		local archiveKey = ReceiptCapacity.archiveKey(profileKey, index)
 
-		local outcome = deps.profiles:writeRecord(deps.archiveStore, archiveKey, function(old)
-			if old ~= nil then
-				-- An earlier attempt wrote it; keep the first copy.
-				return nil
+		local okExisting, existing = readRecord(archiveKey)
+		if not okExisting then
+			return nil, "archive store unreadable", nil
+		end
+
+		local movingList: { string }
+		if existing ~= nil then
+			-- An earlier attempt wrote this record but the profile was never
+			-- updated. Records are never rewritten, so move exactly what it
+			-- holds.
+			local adopted = adoptable(profileKey, profile, existing)
+			if adopted == nil then
+				deps.logger:error(
+					"persistence",
+					"receipt_archive_conflict",
+					{ key = profileKey, archiveKey = archiveKey }
+				)
+				deps.telemetry:track("receipt_archive_conflict", {})
+				return nil, "archive record conflict", nil
 			end
-			return { profileKey = profileKey, index = index, receipts = moving, count = #movingList }
-		end)
-		if outcome == "uncertain" then
-			return nil, "archive write uncertain"
-		end
-		-- Confirm by reading before touching the profile.
-		local okRead, record = pcall(function()
-			return deps.archiveStore:GetAsync(archiveKey)
-		end)
-		if not okRead or type(record) ~= "table" or record.count ~= #movingList then
-			return nil, "archive not confirmed"
-		end
-		for _, id in movingList do
-			if record.receipts[id] ~= true then
-				return nil, "archive incomplete"
+			movingList = adopted
+			deps.logger:warn(
+				"persistence",
+				"receipt_archive_adopted",
+				{ key = profileKey, archiveKey = archiveKey, count = #movingList }
+			)
+		else
+			local ids = {}
+			for id in profile.receipts.permanent do
+				table.insert(ids, id)
+			end
+			if #ids < 2 then
+				return nil, "nothing to archive", nil
+			end
+			table.sort(ids)
+			local moving: { [string]: boolean } = {}
+			movingList = {}
+			for i = 1, math.floor(#ids / 2) do
+				moving[ids[i]] = true
+				table.insert(movingList, ids[i])
+			end
+			local count = #movingList
+			local outcome = deps.profiles:writeRecord(deps.archiveStore, archiveKey, function(old)
+				if old ~= nil then
+					-- Never rewrite a record.
+					return nil
+				end
+				return { profileKey = profileKey, index = index, receipts = moving, count = count }
+			end)
+			if outcome == "uncertain" then
+				return nil, "archive write uncertain", nil
+			end
+			-- Confirm by reading before touching the profile.
+			local okRead, record = readRecord(archiveKey)
+			if not okRead or type(record) ~= "table" or record.count ~= count then
+				return nil, "archive not confirmed", nil
+			end
+			for _, id in movingList do
+				if type(record.receipts) ~= "table" or record.receipts[id] ~= true then
+					return nil, "archive incomplete", nil
+				end
 			end
 		end
 
@@ -201,7 +283,7 @@ function ReceiptCapacity.new(deps: Deps)
 		)
 		deps.telemetry:track("receipts_archived", { count = #movingList })
 
-		return {
+		local mutation: ProfileStore.Mutation = {
 			id = "archive:" .. archiveKey,
 			irreversible = true,
 			apply = function(stored: PlayerProfile): PlayerProfile?
@@ -221,8 +303,8 @@ function ReceiptCapacity.new(deps: Deps)
 			isApplied = function(stored: PlayerProfile): boolean
 				return table.find(stored.receipts.archives, archiveKey) ~= nil
 			end,
-		},
-			nil
+		}
+		return mutation, nil, { archiveKey = archiveKey, receipts = movingList }
 	end
 
 	return table.freeze(monitor)
