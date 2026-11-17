@@ -28,6 +28,11 @@ export type Deps = {
 	-- Steps of change history kept; older revisions force a full delta.
 	historySteps: number?,
 	maxCuesPerBatch: number?,
+	-- Extra fields for a player's own view (Dissonance, Verse cooldowns).
+	-- Supplied by the service that owns those layers.
+	ownExtras: ((
+		id: string
+	) -> { dissonance: number, band: number, cooldowns: { [string]: number } }?)?,
 }
 
 export type Replication = {
@@ -219,8 +224,12 @@ function Replication.new(sim: Simulation.Simulation, deps: Deps?): Replication
 			return nil
 		end
 		local targeting = options.targeting
+		local extras = if options.ownExtras ~= nil then options.ownExtras(id) else nil
 		return {
 			id = id,
+			dissonance = if extras ~= nil then extras.dissonance else nil,
+			dissonanceBand = if extras ~= nil then extras.band else nil,
+			cooldowns = if extras ~= nil then extras.cooldowns else nil,
 			state = combatant.action.state,
 			phase = combatant.action.phase,
 			actionId = combatant.action.actionId,

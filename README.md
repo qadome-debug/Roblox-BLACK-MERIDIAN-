@@ -182,6 +182,34 @@ production project mounts anything from `src/tests`, if production source
 reaches for the harness outside the two Studio-only blocks, or if the
 harness loses its own Studio guard.
 
+## Hands-on Nearness demo
+
+Build the demo place and open it in Roblox Studio, then press Play:
+
+```bash
+rojo build playtest-demo.project.json -o BlackMeridianDemo.rbxl
+```
+
+| Key | Verse | What it does |
+| --- | ----- | ------------ |
+| Q | Close Step | Lunge toward the cursor (up to 16 studs; stops at walls, boundaries and voids) |
+| E | Draw Near | Pull the enemy under the cursor to about 4 studs from you |
+| R | Between Us | Tether the two enemies nearest the cursor (one enemy: tethered to you) |
+| F | No Farther | A 10-stud zone at the cursor that halves movement away from its centre |
+| G | | Enemies run away on or off, to see No Farther work |
+| H | | Reset enemies, stamina, Dissonance and position |
+
+Blue enemies are normal, orange is an elite (pulled half the distance), red
+is a boss (cannot be pulled or tethered, not slowed). The HUD shows stamina,
+the Dissonance meter with its band, and a cooldown for each ability.
+
+Every Verse is a real `VerseCast` request judged by the server, and Nearness
+is equipped with a real `CantEquip` request. The harness only stands in for
+things that do not exist yet: granting Nearness and its Verses (the story),
+the arena and enemies, and the flee toggle. Visuals are temporary
+placeholders. The demo is Studio only: `tools/check-production.luau` keeps it
+out of the game build.
+
 ## Documents
 
 | File                          | Purpose                                                        |

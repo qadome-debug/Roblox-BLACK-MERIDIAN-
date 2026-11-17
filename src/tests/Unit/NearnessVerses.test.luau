@@ -634,4 +634,21 @@ suite:case("the cast request carries a bounded aim and a second target", functio
 	Assert.isNil(validate({ verseId = "near.close_step", extra = 1 }), "unknown field")
 end)
 
+suite:case("the player's own view carries Dissonance and Verse cooldowns for the HUD", function(env)
+	local h = harness(env)
+	local before: any = h.service:ownView(1)
+	Assert.equal(before.dissonance, 0, "starts at zero")
+	Assert.equal(before.dissonanceBand, 0, "Stable")
+	Assert.deepEqual(before.cooldowns, {}, "nothing cooling down")
+	Assert.isTrue(h.cast("near.close_step", nil, { aim = Vec3.new(0, 3, -30) }).ok, "cast")
+	h.step(2)
+	local after: any = h.service:ownView(1)
+	Assert.equal(after.dissonance, 8, "8 Dissonance")
+	Assert.isTrue(
+		after.cooldowns["near.close_step"] > 6.5 and after.cooldowns["near.close_step"] <= 7,
+		"about 7 s left"
+	)
+	Assert.isNil(after.cooldowns["near.draw_near"], "other Verses are ready")
+end)
+
 return suite:cases()

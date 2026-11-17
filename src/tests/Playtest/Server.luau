@@ -42,6 +42,17 @@ local ENEMY_ID = "pt-enemy"
 local demoEnemies: { [string]: Part } = {}
 local drifts: { [string]: { x: number, z: number } } = {}
 
+-- The hands-on demo (playtest-demo.project.json): targets for the four
+-- Nearness Verses. Passive stand-ins; the game has no enemy models yet.
+local DEMO_ENEMIES = {
+	{ id = "demo-a", x = 10, z = -14, kind = "normal" },
+	{ id = "demo-b", x = 15, z = -20, kind = "normal" },
+	{ id = "demo-c", x = -8, z = -16, kind = "normal" },
+	{ id = "demo-d", x = -15, z = -12, kind = "normal" },
+	{ id = "demo-elite", x = -18, z = -26, kind = "elite" },
+	{ id = "demo-boss", x = 0, z = -30, kind = "boss" },
+}
+
 local dataStores = FakeDataStoreService.new({ clock = Clock.manual(), rng = Rng.new(20261115) })
 
 local Playtest = {}
@@ -360,6 +371,87 @@ function Playtest.start(services: { [string]: any })
 	-- enemy that runs away. Applied after the Verse effects of that step.
 	commands.drift = function(_, arg)
 		drifts[arg.id] = { x = arg.vx, z = arg.vz }
+		return { ok = true }
+	end
+
+	-- Pillars and labelled signs around the arena, for the hands-on demo.
+	local function sign(text: string, position: Vector3)
+		local part = Instance.new("Part")
+		part.Name = "BMSign"
+		part.Anchored = true
+		part.CanCollide = false
+		part.Transparency = 1
+		part.Size = Vector3.new(1, 1, 1)
+		part.Position = position
+		local gui = Instance.new("BillboardGui")
+		gui.Size = UDim2.fromOffset(240, 50)
+		gui.AlwaysOnTop = true
+		gui.StudsOffset = Vector3.new(0, 0, 0)
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 0.4
+		label.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.Font = Enum.Font.GothamMedium
+		label.TextSize = 14
+		label.Text = text
+		label.Parent = gui
+		gui.Parent = part
+		part.Parent = Workspace
+	end
+
+	commands.demoArena = function(player)
+		commands.arena(player, nil)
+		if Workspace:FindFirstChild("BMPillar1") == nil then
+			for index, spot in
+				{ Vector3.new(-6, 6, -6), Vector3.new(6, 6, -9), Vector3.new(0, 6, -20) }
+			do
+				local pillar = Instance.new("Part")
+				pillar.Name = "BMPillar" .. index
+				pillar.Anchored = true
+				pillar.Size = Vector3.new(4, 12, 4)
+				pillar.Position = spot
+				pillar.Color = Color3.fromRGB(90, 90, 100)
+				pillar.Parent = Workspace
+			end
+			sign("WALL: Close Step stops short of it", Vector3.new(22, 14, 0))
+			sign("INVISIBLE BOUNDARY: nothing crosses it", Vector3.new(0, 14, -38))
+			sign("PILLARS block line of sight", Vector3.new(0, 14, -12))
+		end
+		return { ok = true }
+	end
+
+	commands.demoSetup = function(player)
+		local granted = commands.grantNearness(player, nil)
+		local verses = commands.grantNearnessVerses(player, nil)
+		commands.demoArena(player, nil)
+		commands.setupEnemies(player, DEMO_ENEMIES)
+		return { ok = granted.ok and verses.ok }
+	end
+
+	commands.demoReset = function(player)
+		commands.refill(player, nil)
+		commands.resetDissonance(player, nil)
+		table.clear(drifts)
+		commands.setupEnemies(player, DEMO_ENEMIES)
+		commands.teleport(player, { x = 0, z = 0 })
+		return { ok = true }
+	end
+
+	-- Makes every enemy run away from the player at 4 studs per second, so
+	-- No Farther can be seen slowing them. Harness only.
+	commands.flee = function(player, on)
+		local me = combat.sim:get(combat:combatantId(player.UserId))
+		for id in demoEnemies do
+			local c = combat.sim:get(id)
+			if on and me ~= nil and c ~= nil and c.extra.displacement ~= "immune" then
+				local dx, dz = c.position.x - me.position.x, c.position.z - me.position.z
+				local length = math.max(0.001, math.sqrt(dx * dx + dz * dz))
+				drifts[id] = { x = dx / length * 4, z = dz / length * 4 }
+			else
+				drifts[id] = nil
+			end
+		end
 		return { ok = true }
 	end
 

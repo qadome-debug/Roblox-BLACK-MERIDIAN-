@@ -81,6 +81,12 @@ local steps: { Step } = {
 		args = { "run", "tools/check-production.luau", "--project", "playtest.project.json" },
 		expectFailure = true,
 	},
+	{
+		name = "production isolation (expect failure on the demo build)",
+		program = "lune",
+		args = { "run", "tools/check-production.luau", "--project", "playtest-demo.project.json" },
+		expectFailure = true,
+	},
 	{ name = "tests", program = "lune", args = { "run", "tools/run-tests.luau" } },
 	{
 		name = "failing fixture (expect failure)",

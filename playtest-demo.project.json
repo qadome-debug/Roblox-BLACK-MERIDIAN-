@@ -1,0 +1,80 @@
+{
+  "name": "BlackMeridianDemo",
+  "globIgnorePaths": [
+    "**/.gitkeep"
+  ],
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Tests": {
+        "$path": "src/tests"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": {
+          "$path": "src/client",
+          "PlaytestClient": {
+            "$path": "src/tests/Playtest/DemoClient.luau"
+          }
+        }
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$attributes": {
+        "PlaytestDemo": true
+      },
+      "Baseplate": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            512,
+            4,
+            512
+          ],
+          "Position": [
+            0,
+            -2,
+            0
+          ]
+        }
+      },
+      "SpawnLocation": {
+        "$className": "SpawnLocation",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            8,
+            1,
+            8
+          ],
+          "Position": [
+            0,
+            0.5,
+            0
+          ]
+        }
+      },
+      "PlaytestControl": {
+        "$className": "RemoteFunction"
+      }
+    }
+  }
+}

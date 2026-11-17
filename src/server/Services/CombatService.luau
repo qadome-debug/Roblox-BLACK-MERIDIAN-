@@ -161,7 +161,14 @@ function CombatService.new(deps: Deps): Service
 	Defense.attach(sim, damage)
 	local targeting = Targeting.attach(sim, { lineOfSight = deps.lineOfSight, damage = damage })
 	local ai = Ai.attach(sim, { logger = deps.logger, navigator = deps.navigator, damage = damage })
-	local replication = Replication.new(sim, { targeting = targeting })
+	local ownExtras: ((id: string) -> { dissonance: number, band: number, cooldowns: { [string]: number } }?)? =
+		nil
+	local replication = Replication.new(sim, {
+		targeting = targeting,
+		ownExtras = function(id: string)
+			return if ownExtras ~= nil then ownExtras(id) else nil
+		end,
+	})
 	local catalog = deps.cantCatalog or CantCatalog.production()
 	local burdenCatalog = deps.burdenCatalog or BurdenCatalog.production()
 	local burdens = BurdenEffects.attach(sim, {
@@ -234,6 +241,20 @@ function CombatService.new(deps: Deps): Service
 			end
 		end,
 	})
+	ownExtras = function(id: string)
+		local cooldowns: { [string]: number } = {}
+		for _, verseId in verseCatalog:ids() do
+			local steps = verses:cooldownRemaining(id, verseId)
+			if steps > 0 then
+				cooldowns[verseId] = math.floor(steps * sim.stepSeconds * 10 + 0.5) / 10
+			end
+		end
+		return {
+			dissonance = math.floor(dissonance:value(id) * 10 + 0.5) / 10,
+			band = dissonance:level(id),
+			cooldowns = cooldowns,
+		}
+	end
 	local replicateInterval = deps.replicateInterval or CombatService.DEFAULT_REPLICATE_INTERVAL
 	sim:onStep(function(step: number)
 		ai:tick()

@@ -47,6 +47,11 @@ export type OwnCombatant = {
 	ackSequence: number,
 	target: string?,
 	engaged: boolean,
+	-- Dissonance meter 0..100 (one decimal) and its band index 0..4.
+	dissonance: number?,
+	dissonanceBand: number?,
+	-- Seconds of cooldown left per Verse, only for Verses cooling down.
+	cooldowns: { [string]: number }?,
 }
 
 export type Delta = {
