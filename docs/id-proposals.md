@@ -1,6 +1,10 @@
 # Machine ID proposals
 
-Status: 2026-11-16. For approval by the designer.
+Status: 2026-11-16. **All six IDs approved and registered** (the designer
+chose `waymark.branded`). `waymark-i` was migrated by schema v4. The
+proposal below is kept as the record. One inference to confirm:
+`boss.lantern_maw` has `descent.lantern_vault` as its location because the
+schema requires one and Lantern Maw is the first boss.
 
 These items are established by the design, but the 22-part report's
 machine IDs for them are not available. The IDs below are **proposals**,

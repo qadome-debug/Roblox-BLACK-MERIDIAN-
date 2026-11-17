@@ -1,6 +1,11 @@
 # Decision sheet — Nearness, Dissonance, Burdens
 
-Status: 2026-11-16. For approval by the designer.
+Status: 2026-11-16. **Sections 2 to 6 approved as initial balancing
+values** and implemented (Content/NearnessTuning, Combat/Dissonance
+tuning). Section 7: Unwanted Company is replaced by
+`docs/unwanted-company-proposal.md`; Long Way Home is implemented with the
+approved 10% per move, capped at 50%, interpreted as stamina
+regeneration. Safe-anchor Cant swapping is not built (no anchors yet).
 
 **Every number below is a PROVISIONAL recommendation.** None of them is in
 the code. The four Nearness Verses are registered with their confirmed

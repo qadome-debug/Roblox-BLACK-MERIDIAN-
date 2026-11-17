@@ -80,7 +80,7 @@ local function obstruction(from: Vector3, to: Vector3, p: RaycastParams): number
 	for _, part in CollectionService:GetTagged(WorldQuery.BOUNDARY_TAG) do
 		if part:IsA("BasePart") then
 			plain.FilterDescendantsInstances = { part }
-			local boundary = part:Raycast(from, direction, plain)
+			local boundary = Workspace:Raycast(from, direction, plain)
 			if boundary ~= nil then
 				local distance = (boundary.Position - from).Magnitude
 				if nearest == nil or distance < nearest then

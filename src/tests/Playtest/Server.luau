@@ -19,11 +19,13 @@
 -- "recoverDissonance" stand in for the world sources (Verses, areas,
 -- anchors, camps) that do not exist yet.
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
 
+local ActionMachine = require(ServerScriptService.Server.Combat.ActionMachine)
 local Clock = require(ReplicatedStorage.Shared.Sim.Clock)
 local Config = require(ServerScriptService.Server.Config)
 local FakeDataStoreService = require(script.Parent.Parent.Support.FakeDataStoreService)
@@ -32,6 +34,13 @@ local Rng = require(ReplicatedStorage.Shared.Sim.Rng)
 
 local SCOPE = Config.build("studio").dataStoreScope
 local ENEMY_ID = "pt-enemy"
+
+-- Demo enemies: combatants in the simulation with a visible stand-in body.
+-- The bodies live under Workspace.BMDynamic, which the world queries ignore,
+-- and follow the simulation every frame. They are scaffolding: the game has
+-- no enemy models yet.
+local demoEnemies: { [string]: Part } = {}
+local drifts: { [string]: { x: number, z: number } } = {}
 
 local dataStores = FakeDataStoreService.new({ clock = Clock.manual(), rng = Rng.new(20261115) })
 
@@ -61,6 +70,7 @@ function Playtest.start(services: { [string]: any })
 	end
 	local combat = services.combat
 	local profiles = services.profiles
+	local characters = services.characters
 	local control = Workspace:WaitForChild("PlaytestControl", 10) :: RemoteFunction?
 	if control == nil then
 		warn("[PT] Workspace.PlaytestControl is missing; build with playtest.project.json")
@@ -102,6 +112,38 @@ function Playtest.start(services: { [string]: any })
 				out.health = me.resources.health
 				out.actionState = me.action.state
 			end
+		end
+		-- Positions for the Verse effect checks.
+		local pose = combat.sim:get(combat:combatantId(userId))
+		if pose ~= nil then
+			out.pos = { x = pose.position.x, y = pose.position.y, z = pose.position.z }
+		end
+		local character = player.Character
+		local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+		if root ~= nil and root:IsA("BasePart") then
+			out.rootPos = { x = root.Position.X, y = root.Position.Y, z = root.Position.Z }
+		end
+		local enemies: { [string]: any } = {}
+		for id in demoEnemies do
+			local c = combat.sim:get(id)
+			if c ~= nil then
+				enemies[id] = { x = c.position.x, z = c.position.z }
+			end
+		end
+		out.enemies = enemies
+		if profile ~= nil then
+			local count = 0
+			for _ in profile.cants.verses["cant.nearness"] or {} do
+				count += 1
+			end
+			out.verseCount = count
+		end
+		if stored ~= nil then
+			local storedCount = 0
+			for _ in (stored.cants.verses["cant.nearness"] or {}) do
+				storedCount += 1
+			end
+			out.storedVerseCount = storedCount
 		end
 		local enemy = combat.sim:get(ENEMY_ID)
 		if enemy ~= nil then
@@ -181,6 +223,172 @@ function Playtest.start(services: { [string]: any })
 			value = combat.dissonance:recover(combat:combatantId(player.UserId), amount, "anchor"),
 		}
 	end
+
+	local function dynamicFolder(): Folder
+		local existing = Workspace:FindFirstChild("BMDynamic")
+		if existing ~= nil then
+			return existing :: Folder
+		end
+		local folder = Instance.new("Folder")
+		folder.Name = "BMDynamic"
+		folder.Parent = Workspace
+		return folder
+	end
+
+	-- The arena: a solid wall to the east and an invisible, non-colliding
+	-- boundary to the north, which only the tag makes a barrier.
+	commands.arena = function()
+		if Workspace:FindFirstChild("BMWall") == nil then
+			local wall = Instance.new("Part")
+			wall.Name = "BMWall"
+			wall.Anchored = true
+			wall.Size = Vector3.new(2, 20, 80)
+			wall.Position = Vector3.new(24, 10, 0)
+			wall.Color = Color3.fromRGB(70, 70, 80)
+			wall.Parent = Workspace
+			local boundary = Instance.new("Part")
+			boundary.Name = "BMBoundary"
+			boundary.Anchored = true
+			boundary.CanCollide = false
+			boundary.CanQuery = true
+			boundary.Transparency = 0.85
+			boundary.Color = Color3.fromRGB(200, 80, 80)
+			boundary.Size = Vector3.new(80, 20, 2)
+			boundary.Position = Vector3.new(0, 10, -40)
+			boundary.Parent = Workspace
+			CollectionService:AddTag(boundary, "BM_Boundary")
+		end
+		return { ok = true }
+	end
+
+	local function clearEnemies()
+		for id, body in demoEnemies do
+			combat:despawnEnemy(id)
+			body:Destroy()
+		end
+		table.clear(demoEnemies)
+		table.clear(drifts)
+	end
+
+	-- arg: { { id, x, z, kind }, ... } in world coordinates. kind is
+	-- "normal", "elite" or "boss".
+	commands.setupEnemies = function(_, arg)
+		clearEnemies()
+		for _, spec in arg do
+			local kind = spec.kind or "normal"
+			combat:spawnEnemy({
+				id = spec.id,
+				position = { x = spec.x, y = 3, z = spec.z },
+				displacement = if kind == "boss"
+					then "immune"
+					elseif kind == "elite" then "elite"
+					else "normal",
+				profile = {
+					aggroRange = 1,
+					attackRange = 1,
+					leashRange = 2000,
+					maxPathFailures = 3,
+					attackCooldownSteps = 30,
+					attackJitterSteps = 10,
+					repathSteps = 10,
+				},
+			})
+			local body = Instance.new("Part")
+			body.Name = spec.id
+			body.Anchored = true
+			body.CanCollide = false
+			body.Shape = Enum.PartType.Cylinder
+			body.Size = if kind == "boss" then Vector3.new(10, 8, 8) else Vector3.new(5, 3.5, 3.5)
+			body.Orientation = Vector3.new(0, 0, 90)
+			body.Material = Enum.Material.Neon
+			body.Color = if kind == "boss"
+				then Color3.fromRGB(200, 40, 40)
+				elseif kind == "elite" then Color3.fromRGB(220, 150, 40)
+				else Color3.fromRGB(90, 160, 220)
+			body:SetAttribute("CombatId", spec.id)
+			body.Parent = dynamicFolder()
+			demoEnemies[spec.id] = body
+		end
+		return { ok = true }
+	end
+
+	commands.teleport = function(player, arg)
+		return { ok = characters:teleport(player.UserId, { x = arg.x, y = 3, z = arg.z }) }
+	end
+
+	-- Refills stamina and clears Verse cooldowns so each effect can be
+	-- checked on its own. Harness only.
+	commands.refill = function(player)
+		local id = combat:combatantId(player.UserId)
+		local me = combat.sim:get(id)
+		if me ~= nil then
+			me.resources.stamina = me.derived.maxStamina
+		end
+		combat.verses:forget(id)
+		return { ok = me ~= nil }
+	end
+
+	commands.resetDissonance = function(player)
+		local id = combat:combatantId(player.UserId)
+		combat.dissonance:recover(id, 1000, "anchor")
+		return { ok = true }
+	end
+
+	-- A stagger, which interrupts a cast, or a plain hit, which does not.
+	commands.interrupt = function(player, kind)
+		local me = combat.sim:get(combat:combatantId(player.UserId))
+		if me == nil then
+			return { ok = false }
+		end
+		ActionMachine.interrupt(me.action, kind, 6, combat.sim:stepNumber())
+		return { ok = true }
+	end
+
+	-- Starts a cast and interrupts it in the same step, so the interruption
+	-- cannot lose a race with the cast time. Harness only.
+	commands.castThenInterrupt = function(player, arg)
+		local id = combat:combatantId(player.UserId)
+		local outcome = combat.verses:cast(id, arg.verseId, arg.target)
+		local me = combat.sim:get(id)
+		if outcome.ok and me ~= nil then
+			ActionMachine.interrupt(me.action, arg.kind, 6, combat.sim:stepNumber())
+		end
+		return { ok = outcome.ok }
+	end
+
+	-- Moves an enemy by a fixed velocity every step, standing in for an
+	-- enemy that runs away. Applied after the Verse effects of that step.
+	commands.drift = function(_, arg)
+		drifts[arg.id] = { x = arg.vx, z = arg.vz }
+		return { ok = true }
+	end
+
+	commands.clearEnemies = function()
+		clearEnemies()
+		return { ok = true }
+	end
+
+	combat.sim:onStep(function()
+		for id, velocity in drifts do
+			local c = combat.sim:get(id)
+			if c ~= nil then
+				c.position = {
+					x = c.position.x + velocity.x * combat.sim.stepSeconds,
+					y = c.position.y,
+					z = c.position.z + velocity.z * combat.sim.stepSeconds,
+				}
+			end
+		end
+	end)
+
+	RunService.Heartbeat:Connect(function()
+		for id, body in demoEnemies do
+			local c = combat.sim:get(id)
+			if c ~= nil then
+				body.Position = Vector3.new(c.position.x, c.position.y - 0.5, c.position.z)
+			end
+		end
+	end)
 
 	commands.spawnEnemy = function(player)
 		local character = player.Character

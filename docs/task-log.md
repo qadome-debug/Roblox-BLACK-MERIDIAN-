@@ -35,7 +35,7 @@ now Built and Held. Result for BM-001 to BM-069: 6 accepted,
 | BM-001 | Built | Yes | 2026-11-12 | `rojo build` clean; both bootstraps printed in a Studio playtest |
 | BM-002 | Built | Yes | 2026-11-12 | Clean Rokit install on Windows; format, lint, type check, build all pass |
 | BM-003 | Built | Yes | 2026-11-12 | `docs/architecture.md`; `tools/check-deps.luau` self-test passes on clean, cycle, layer and unresolved fixtures; repo check passes |
-| BM-004 | Framework | No: own gap | 2026-11-16 | NOT ACCEPTED: most of the inventory is still missing. The ID format of the design report is supported (dots and underscores; `cant.<name>`; Verses `<namespace>.<name>` with one namespace per Cant) after an audit of every stored and matched ID. Registered: the four launch Cants, the four Nearness Verses, Waymark I (old-style ID). Proposed IDs for Ash Quay, Lantern Vault, Lantern Maw, Waymark I and the two Nearness Burdens wait for approval (`docs/id-proposals.md`). Schema v3 migration carries the old Nearness ID over in saved data |
+| BM-004 | Framework | No: own gap | 2026-11-16 | NOT ACCEPTED: the rest of the inventory (quests, chapters, other regions, Waymarks II onward, other Cants' Verses and Burdens) is still missing. Registered with approved IDs: four launch Cants, four Nearness Verses, `region.ash_quay`, `descent.lantern_vault`, `boss.lantern_maw`, `waymark.branded`, `burden.unwanted_company`, `burden.long_way_home`. Waymark I migrated from `waymark-i` by schema v4: progress, permanent, seasonal and pending receipts; archive records are never rewritten and are translated when read (regression tests) |
 | BM-005 | Built | Held by BM-004 | 2026-11-12 | `Contracts/{Actions,Protocol,Payloads}`, `Types/Profile`, `Constants/Limits` type-check in strict mode; `tools/check-contracts.luau` finds no `any`; 6 contract tests pass |
 | BM-006 | Built | Yes | 2026-11-12 | `server/Config` builds frozen config per environment; 9 tests cover invalid config, production override refusal, and every experimental flag defaulting off in every environment |
 | BM-007 | Built | Yes | 2026-11-12 | `shared/Sim/{Clock,Rng,FixedStep}`; 13 tests including a seeded simulation replayed to an identical trace and a pinned known sequence |
@@ -96,11 +96,11 @@ now Built and Held. Result for BM-001 to BM-069: 6 accepted,
 | BM-062 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: Embers, Second Voice and Still Water have no Verses, Burdens or acquisition yet. All four launch Cants are defined. Nearness: acquired in the introductory story (unlock kind "story"), separate from Waymark I, all four Verses listed, mechanics canonical. The other three: "undetermined" unlock that can never be satisfied. Approved: one slot to start, the second at Waymark II; only the first slot is implemented |
 | BM-063 | Framework | No: own gap; waits on BM-062, BM-066, BM-069 | 2026-11-16 | NOT ACCEPTED: Nearness works when its four Verses and its Burden work, and none of them is complete. The unsupported standalone Cant activation, the placeholder Nearness kit and its cue were removed (approval A2). A Cant is now an equipped discipline with no ability of its own; tests assert the layer offers only equip, equipped and forget |
 | BM-064 | Framework | No: own gap; waits on BM-062, BM-063 | 2026-11-16 | NOT ACCEPTED: no flow grants Nearness in normal play (introductory story not built); the safe-anchor swap rule is approved as a proposal but anchors do not exist yet. Equip request, ownership check, save and restore work with the new IDs; verified in Studio 2026-11-16 |
-| BM-065 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: costs, cast times and Dissonance gain of the Nearness Verses are not approved. Cooldowns are stored in seconds and converted to steps at the simulation's step length. The four Nearness Verses are defined with their confirmed cooldowns (7, 11, 16, 24 s) and are provisional; any value not approved is left unset, and a canonical Verse must have all of them |
-| BM-066 | Blocked | No: own gap; waits on BM-063, BM-065 | 2026-11-16 | Needs the decision sheet (`docs/decision-sheet.md`, sections 1 to 5). The four Verses are registered and refuse to cast ("verse not available") until then; nothing is spent and no cooldown starts |
-| BM-067 | Framework | No: own gap; waits on BM-065, BM-066 | 2026-11-16 | NOT ACCEPTED: depends on BM-066. The pipeline refuses Verses whose costs or cast time are unset. Engine work still to do for the Nearness Verses: aim in the request, world queries, server movement, timed zones and tethers |
-| BM-068 | Framework | No: own gap; waits on BM-067 | 2026-11-16 | NOT ACCEPTED: amounts, recovery rates and what each band does are not approved. Built from canon: 0 to 100 in the five bands (40, 65, 85, 100) with their names; named gain sources (Verse, Relic, unstable area, enemy attack, failed containment) and recovery sources (stable environment, anchor, camp, consumable, encounter completion, cooperative); no decay over time; passive recovery only in a stable environment and only with an approved rate; reaching 100 announces a rupture handed to the region or encounter; never saved; no player-triggered actions. A resolved Verse adds its own stated Dissonance (none yet). The old placeholder thresholds and decay are gone |
-| BM-069 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: the two Nearness Burdens wait for their IDs and values. A Burden now belongs to a Cant as its default or a mastery Burden; at most one default per Cant; effects are names with bounded numeric parameters; `activeFor` gives the default unless mastery is unlocked and the choice belongs to the Cant. The unsupported pickup model (sources, stacks, stat-only modifiers) was removed |
+| BM-065 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: only Nearness has Verses. Catalog now holds the four Nearness Verses with confirmed cooldowns and initial balancing values from one tuning table (`Content/NearnessTuning`), including targeting, cast states, effect name and parameters |
+| BM-066 | Built | No: own gap | 2026-11-16 | Technical gate met, gameplay gate OPEN. The four Verses work on the server: Close Step (16 studs, wall, boundary and void safe), Draw Near (one enemy to 4 studs, elites half, bosses immune), Between Us (two targets within 8 studs by a bounded, gentle correction; the caster is never moved), No Farther (10-stud zone, 5 s, halves movement away from the centre; enemies only; bosses and teammates unaffected). 18 headless tests; verified in Studio against real walls and a tagged boundary. Needs: designer play review and re-balancing, effects/animation/audio/UI (none exist), multiplayer and real-DataStore tests |
+| BM-067 | Built | Held by BM-066 | 2026-11-16 | Pipeline: aim and second target in the request (bounded), per-Verse targeting rules, castable states (incl. attack recovery for Close Step), only stagger or death interrupts, an interrupted or empty cast keeps its stamina and cooldown and gains no Dissonance, a Verse naming a missing effect fails closed |
+| BM-068 | Framework | No: own gap; waits on BM-067 | 2026-11-16 | NOT ACCEPTED: what each band DOES to players, enemies and the world, relics, camps, consumables and cooperative actions need systems that do not exist. Built: five bands, configurable initial amounts for every source, recovery only from authorised sources, default rupture drop to 60 with a region/encounter override, never saved, resets on rejoin (tested) |
+| BM-069 | Framework | No: own gap; waits on BM-004 | 2026-11-16 | NOT ACCEPTED: Unwanted Company has no effect until a behaviour-based version is approved (`docs/unwanted-company-proposal.md`); the Long Way Home unlock needs the mastery trial (after Waymark II, design not approved). Built: Cant-bound catalog; Long Way Home lowers stamina regeneration 10% per Close Step up to 50% and clears on stable ground; mastery choice gated |
 
 ## What holds acceptance
 
@@ -115,6 +115,34 @@ without new work in those tasks.
 | BM-062 to BM-069 | Cant, Verse, Dissonance and Burden content and mechanics | Designer | Each other, and BM-070 onward |
 
 The exact information needed for each is in `docs/design-requests.md`.
+
+## Verse effects, Dissonance amounts and IDs 2026-11-16 (later)
+
+Approved by the designer: the six machine IDs, the initial balancing
+values for the four Nearness Verses and Dissonance, and the Long Way Home
+penalty. Gameplay acceptance stays open: the values are starting points to
+be tuned by playing, and no art, animation, audio or UI exists.
+
+| Area | Result |
+| ---- | ------ |
+| IDs and Waymark migration | Six IDs registered; schema v4; archives translated on read |
+| Nearness Verses (BM-066) | All four implemented server-side with tests and a Studio check |
+| Dissonance (BM-068) | Amounts configurable; safe rupture; recovery only from authorised sources |
+| Burdens (BM-069) | Long Way Home implemented; Unwanted Company proposal written |
+| Studio play-test | Real wall, tagged boundary, character movement and raycasts. Found and fixed: the boundary check called a method that does not exist (`BasePart:Raycast`), which headless tests could not catch |
+
+Known gaps in this group:
+
+- **Cooldowns reset on rejoin** (they live in the combat layer, which is
+  recreated). A player could rejoin to skip a cooldown. Fix: keep
+  cooldowns server-side for a short time after leaving.
+- **Between Us on two players, or a player endpoint other than the
+  caster,** is not allowed (allies are never forced to move).
+- **Draw Near on objects** waits for world content.
+- **No client input or visuals** for the Verses outside the Studio
+  harness.
+- Unwanted Company, band effects, relics, camps, consumables, the mastery
+  trial and the Cant swap rule at safe anchors are not built.
 
 ## Implementation of approved decisions 2026-11-16
 
