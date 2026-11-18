@@ -375,4 +375,39 @@ suite:case("the own view reports health and death for the HUD", function(env)
 	Assert.equal(view.state, "Idle", "alive")
 end)
 
+suite:case("REGRESSION: a demo dummy woken by walking through it does not follow", function(env)
+	local combat = make(env)
+	combat:spawnEnemy({
+		id = "dummy",
+		position = { x = 0, y = 3, z = 0 },
+		modifiers = { { id = "demo_dummy", stat = "attackPower", add = -1000 } },
+		profile = {
+			aggroRange = 1,
+			attackRange = 1,
+			leashRange = 1,
+			maxPathFailures = 3,
+			attackCooldownSteps = 3000,
+			attackJitterSteps = 0,
+			repathSteps = 10,
+		},
+	})
+	local player = combat.sim:get(combat:combatantId(1)) :: any
+	local dummy = combat.sim:get("dummy") :: any
+	player.position = Vec3.new(0.5, 3, 0)
+	step(combat, 5)
+	player.position = Vec3.new(60, 3, 0)
+	step(combat, 400)
+	Assert.isTrue(
+		Vec3.flatDistance(dummy.position, Vec3.new(0, 3, 0)) < 4,
+		"the dummy stayed near home ("
+			.. Vec3.flatDistance(dummy.position, Vec3.new(0, 3, 0))
+			.. ")"
+	)
+	Assert.equal(
+		combat.sim:get(combat:combatantId(1)).resources.health,
+		player.derived.maxHealth,
+		"no damage"
+	)
+end)
+
 return suite:cases()

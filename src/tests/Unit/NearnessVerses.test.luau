@@ -453,10 +453,10 @@ suite:case("Between Us refuses bosses, allies, one target and the same target tw
 	Assert.equal(me(h).resources.stamina, me(h).derived.maxStamina, "refusals cost nothing")
 end)
 
-suite:case("No Farther halves movement away from the centre, only for enemies", function(env)
+suite:case("No Farther slows all movement inside its 20-stud zone, only for enemies", function(env)
 	local h = harness(env)
 	local inside = h.enemy("in", 18, 0)
-	local other = h.enemy("out", 40, 0)
+	local other = h.enemy("out", 50, 0)
 	local before = me(h).resources.stamina
 	Assert.isTrue(h.cast("near.no_farther", nil, { aim = Vec3.new(15, 3, 0) }).ok, "cast")
 	Assert.equal(before - me(h).resources.stamina, 30, "30 stamina")
@@ -465,7 +465,7 @@ suite:case("No Farther halves movement away from the centre, only for enemies", 
 	Assert.equal(effects(h):counts().zones, 1, "zone active")
 	Assert.isTrue(h.has("verse_field", "kind", "zone"), "zone cue with its centre and radius")
 	h.step(1)
-	-- Flee outward at 1 stud a step: halved. Come back inward: untouched.
+	-- Moving 1 stud a step in any direction inside the zone runs at 40%.
 	local start = inside.position.x
 	for _ = 1, 4 do
 		inside.position = Vec3.new(inside.position.x + 1, 3, 0)
@@ -473,15 +473,15 @@ suite:case("No Farther halves movement away from the centre, only for enemies", 
 		h.step(1)
 	end
 	local fled = inside.position.x - start
-	Assert.isTrue(fled > 1.5 and fled < 2.5, "4 studs of fleeing became about 2 (" .. fled .. ")")
-	Assert.equal(other.position.x, 44, "outside the zone nothing changes")
+	Assert.isTrue(fled > 1.3 and fled < 1.9, "4 studs outward became about 1.6 (" .. fled .. ")")
+	Assert.equal(other.position.x, 54, "outside the zone nothing changes")
 	local back = inside.position.x
-	inside.position = Vec3.new(back - 1, 3, 0)
-	h.step(1)
-	Assert.isTrue(
-		math.abs(inside.position.x - (back - 1)) < 0.01,
-		"moving toward the centre is free"
-	)
+	for _ = 1, 4 do
+		inside.position = Vec3.new(inside.position.x - 1, 3, 0)
+		h.step(1)
+	end
+	local returned = back - inside.position.x
+	Assert.isTrue(returned > 1.3 and returned < 1.9, "inward is slowed too (" .. returned .. ")")
 	-- Teammates and the caster are never affected.
 	h.service:addPlayer(2)
 	local mate = h.service.sim:get("p-2") :: any

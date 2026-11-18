@@ -8,7 +8,7 @@
 --   E  Draw Near     pull the enemy under the cursor to you
 --   R  Between Us    tether the two enemies nearest the cursor
 --                    (one enemy: it is tethered to you)
---   F  No Farther    zone at the cursor that slows escaping
+--   F  No Farther    zone at the cursor that slows enemies inside (to 40%)
 --   G  toggle        enemies run away (to see No Farther work)
 --   H  reset         enemies, stamina, Dissonance, position
 --

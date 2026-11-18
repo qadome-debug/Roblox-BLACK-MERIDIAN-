@@ -385,3 +385,8 @@ is kept for reference:
 ### Respawn keeps supernatural state, 2026-11-18
 
 Owner decision: H in the Studio demo fully resets health, stamina, Dissonance and cooldowns; production deaths and reconnects must NOT silently clear Dissonance or cooldowns. `CombatService:respawnPlayer` now restores only body state (health, stamina, posture, action state) and the lock-on; cooldowns, Dissonance, Burden penalties and effects are kept. The wipe is in `src/tests/Playtest/Server.luau` only. Open design item: what death costs and what rejoining preserves (removePlayer still builds fresh state; Dissonance and cooldowns are not saved). Studio auto run 24/24, check-all 17 steps.
+
+
+### No Farther made a real slow, demo dummies stop following, 2026-11-18
+
+Hands-on feedback: enemies walked through got stuck to the player and followed; No Farther was hard to tell apart. Causes: (1) demo dummies had aggroRange 1 and leashRange 2000, so passing within 1 stud woke them and they chased forever (no damage, as designed). Now leashRange 1: they give up and go home. Regression test added (fails with the old value). (2) No Farther only halved movement AWAY from the centre. Owner asked for a bigger, clearly slower zone: radius 10 -> 20, all movement inside (any direction) at 40% speed (`slowScale = 0.4`, replaces `awayScale`). Tuning values are provisional and in `NearnessTuning.luau`; bosses, teammates and the caster stay unaffected; forced pulls and tethers are not slowed. check-all 17 steps. Studio re-check pending the owner test.

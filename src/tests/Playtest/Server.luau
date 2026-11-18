@@ -317,7 +317,10 @@ function Playtest.start(services: { [string]: any })
 				profile = {
 					aggroRange = 1,
 					attackRange = 1,
-					leashRange = 2000,
+					-- Walking through a dummy (within 1 stud) wakes it. A 1-stud
+					-- leash makes it give up at once and go home, so it never
+					-- follows the player around.
+					leashRange = 1,
 					maxPathFailures = 3,
 					attackCooldownSteps = 3000,
 					attackJitterSteps = 0,

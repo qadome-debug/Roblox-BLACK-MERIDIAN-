@@ -195,7 +195,7 @@ rojo build playtest-demo.project.json -o BlackMeridianDemo.rbxl
 | Q | Close Step | Lunge toward the cursor (up to 16 studs; stops at walls, boundaries and voids) |
 | E | Draw Near | Pull the enemy under the cursor to about 4 studs from you |
 | R | Between Us | Tether the two enemies nearest the cursor (one enemy: tethered to you) |
-| F | No Farther | A 10-stud zone at the cursor that halves movement away from its centre |
+| F | No Farther | A 20-stud zone at the cursor that slows all enemy movement inside to 40% speed |
 | G | | Enemies run away on or off, to see No Farther work |
 | H | | Full reset: new life if dead, health, stamina, Dissonance, cooldowns, enemies, position |
 | J | | Take 25 test damage (server applies it) |

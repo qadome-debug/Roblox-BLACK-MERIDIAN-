@@ -81,7 +81,7 @@ type Zone = {
 	team: string,
 	center: Vec3.Vec3,
 	radius: number,
-	awayScale: number,
+	slowScale: number,
 	affectsBosses: boolean,
 	endsStep: number,
 }
@@ -314,7 +314,7 @@ function VerseEffects.attach(sim: Simulation.Simulation, deps: Deps): Layer
 			team = caster.team,
 			center = center,
 			radius = p.radius,
-			awayScale = p.awayScale,
+			slowScale = p.slowScale,
 			affectsBosses = (p.affectsBosses or 0) ~= 0,
 			endsStep = ctx.step + steps(p.durationSeconds),
 		}
@@ -411,14 +411,11 @@ function VerseEffects.attach(sim: Simulation.Simulation, deps: Deps): Layer
 				if offset == nil or Vec3.flatDistance(before, zone.center) > zone.radius then
 					continue
 				end
-				-- Movement away from the centre since the previous tick is scaled.
+				-- A real slow: all the movement since the previous tick, in any
+				-- direction, is scaled down while the subject is inside.
 				local delta = flat(Vec3.sub(c.position, before))
-				local outward = Vec3.dot(delta, offset)
-				if outward > 0 then
-					local back = Vec3.scale(offset, outward * (1 - zone.awayScale))
-					local corrected = Vec3.sub(c.position, back)
-					c.position = world.sweep(c.position, corrected)
-				end
+				local back = Vec3.scale(delta, 1 - zone.slowScale)
+				c.position = world.sweep(c.position, Vec3.sub(c.position, back))
 			end
 		end
 	end

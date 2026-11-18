@@ -96,9 +96,9 @@ local NearnessTuning: { Verse } = {
 		effect = "no_farther",
 		params = {
 			range = 20, -- caster to the zone centre
-			radius = 10,
+			radius = 20, -- doubled from 10 at the owner's request after hands-on play
 			durationSeconds = 5,
-			awayScale = 0.5, -- movement away from the centre is halved
+			slowScale = 0.4, -- all movement inside runs at 40% speed (60% slower)
 			affectsBosses = 0, -- bosses keep their own mechanics
 		},
 	},
