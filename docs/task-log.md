@@ -380,3 +380,8 @@ is kept for reference:
 | 11 | BM-072 | Balance targets |
 | 12 | BM-073 to BM-078 | First region quests and Waymark I |
 | 13 | BM-106 | Starting Cant rule |
+
+
+### Respawn keeps supernatural state, 2026-11-18
+
+Owner decision: H in the Studio demo fully resets health, stamina, Dissonance and cooldowns; production deaths and reconnects must NOT silently clear Dissonance or cooldowns. `CombatService:respawnPlayer` now restores only body state (health, stamina, posture, action state) and the lock-on; cooldowns, Dissonance, Burden penalties and effects are kept. The wipe is in `src/tests/Playtest/Server.luau` only. Open design item: what death costs and what rejoining preserves (removePlayer still builds fresh state; Dissonance and cooldowns are not saved). Studio auto run 24/24, check-all 17 steps.

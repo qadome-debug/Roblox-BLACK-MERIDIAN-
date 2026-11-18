@@ -474,6 +474,14 @@ function Playtest.start(services: { [string]: any })
 			end
 		end
 		combat:respawnPlayer(userId)
+		-- Demo-only full reset: production respawn keeps all of this.
+		local id = combat:combatantId(userId)
+		combat.verses:forget(id)
+		combat.dissonance:forget(id)
+		if combat.verseEffects ~= nil then
+			combat.verseEffects:forget(id)
+		end
+		combat.burdens:reset(id)
 		local alive = player.Character ~= nil
 				and player.Character:FindFirstChildOfClass("Humanoid") :: Humanoid?
 			or nil

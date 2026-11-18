@@ -855,6 +855,11 @@ return function(net: any, combatState: any)
 		end, 15)
 		check("the player respawns on their own and is alive", respawned)
 		task.wait(1)
+		-- A natural respawn keeps cooldowns (only H wipes them), so wait for
+		-- the Close Step cooldown to run out before casting again.
+		pollUntil(function()
+			return slots["near.close_step"].cooldown.Text == "ready"
+		end, 20)
 		autoAim = Vector3.new(0, 3, -30)
 		message.Text = ""
 		cast(VERSES[1])

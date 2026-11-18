@@ -365,13 +365,12 @@ function CombatService.new(deps: Deps): Service
 		end
 		local id = playerId(userId)
 		local wasDead = service:isDead(userId)
+		-- Only the body is restored: health, stamina, posture and the action
+		-- state. Cooldowns, Dissonance, Burden penalties and lingering effects
+		-- are deliberately KEPT, so dying or rejoining cannot be used to shed
+		-- supernatural consequences. What death should cost or clear is an open
+		-- design question (not decided yet).
 		sim:revive(id)
-		verses:forget(id)
-		dissonance:forget(id)
-		if verseEffects ~= nil then
-			verseEffects:forget(id)
-		end
-		burdens:reset(id)
 		targeting:request(id, nil)
 		deathReported[userId] = nil
 		lastRevisionSent[userId] = nil

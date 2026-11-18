@@ -146,7 +146,7 @@ suite:case(
 )
 
 suite:case(
-	"respawn clears cooldowns, Dissonance, effects, the lock-on and the penalty",
+	"respawn keeps cooldowns, Dissonance and the penalty; only the demo wipe clears them",
 	function(env)
 		local combat = make(env, {
 			chosen = function()
@@ -166,15 +166,37 @@ suite:case(
 		step(combat, 3)
 		Assert.isTrue(combat.dissonance:value(id) > 0, "gained Dissonance")
 		Assert.isTrue(combat.verses:cooldownRemaining(id, "near.close_step") > 0, "cooling down")
+		local dissonanceBefore = combat.dissonance:value(id)
+		local movesBefore = combat.burdens:moves(id)
+		local penaltyBefore = combat.burdens:penalty(id)
 		combat:killPlayer(1)
 		combat:respawnPlayer(1)
-		Assert.equal(combat.dissonance:value(id), 0, "Dissonance cleared")
-		Assert.equal(combat.verses:cooldownRemaining(id, "near.close_step"), 0, "cooldown cleared")
-		Assert.equal(combat.burdens:moves(id), 0, "penalty cleared")
-		Assert.equal(combat.burdens:penalty(id), 0, "no stamina penalty")
-		local counts = (combat.verseEffects :: any):counts()
-		Assert.equal(counts.tethers or 0, 0, "no tether")
-		Assert.equal(counts.zones or 0, 0, "no zone")
+		Assert.isFalse(combat:isDead(1), "alive again")
+		Assert.isTrue(
+			combat.dissonance:value(id) >= dissonanceBefore,
+			"Dissonance NOT cleared by death"
+		)
+		Assert.isTrue(
+			combat.verses:cooldownRemaining(id, "near.close_step") > 0,
+			"cooldown NOT cleared by death"
+		)
+		Assert.equal(combat.burdens:moves(id), movesBefore, "Burden count NOT cleared")
+		Assert.equal(combat.burdens:penalty(id), penaltyBefore, "stamina penalty NOT cleared")
+		-- The Studio demo's H reset (Playtest/Server.luau) wipes it explicitly.
+		combat.verses:forget(id)
+		combat.dissonance:forget(id)
+		if combat.verseEffects ~= nil then
+			combat.verseEffects:forget(id)
+		end
+		combat.burdens:reset(id)
+		Assert.equal(combat.dissonance:value(id), 0, "demo wipe: Dissonance")
+		Assert.equal(
+			combat.verses:cooldownRemaining(id, "near.close_step"),
+			0,
+			"demo wipe: cooldown"
+		)
+		Assert.equal(combat.burdens:moves(id), 0, "demo wipe: penalty")
+		Assert.equal(combat.burdens:penalty(id), 0, "demo wipe: no stamina penalty")
 	end
 )
 
