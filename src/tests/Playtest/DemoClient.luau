@@ -551,6 +551,15 @@ return function(net: any, combatState: any)
 			say("Not ready yet")
 			return
 		end
+		local waiting = (own.cooldowns or {})[verse.id] or 0
+		if waiting > 0 then
+			say(string.format("%s: on cooldown (%.1fs)", verse.name, waiting))
+			return
+		end
+		if own.stamina < 15 then -- the cheapest Verse costs 15
+			say(verse.name .. ": not enough stamina")
+			return
+		end
 		local aim = aimPoint()
 		local payload: { [string]: any } =
 			{ verseId = verse.id, aimX = aim.X, aimY = aim.Y, aimZ = aim.Z }
@@ -575,7 +584,12 @@ return function(net: any, combatState: any)
 			if status == "OK" then
 				say(verse.name .. ": accepted")
 			else
-				say(verse.name .. ": refused (" .. tostring(status) .. ")")
+				-- The server deliberately gives no detail, so list the usual causes.
+				say(
+					verse.name
+						.. ": refused by the server (not enough stamina, no valid target "
+						.. "within 20 studs or line of sight, or a boss, which cannot be moved)"
+				)
 			end
 		end)
 	end

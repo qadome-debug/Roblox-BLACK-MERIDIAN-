@@ -295,12 +295,14 @@ function Playtest.start(services: { [string]: any })
 					elseif kind == "elite" then "elite"
 					else "normal",
 				profile = {
-					aggroRange = 1,
-					attackRange = 1,
+					-- Training dummies: never aggro and never attack, so the
+					-- demo player cannot be killed while testing Verses.
+					aggroRange = 0,
+					attackRange = 0,
 					leashRange = 2000,
 					maxPathFailures = 3,
-					attackCooldownSteps = 30,
-					attackJitterSteps = 10,
+					attackCooldownSteps = 1000000,
+					attackJitterSteps = 0,
 					repathSteps = 10,
 				},
 			})
