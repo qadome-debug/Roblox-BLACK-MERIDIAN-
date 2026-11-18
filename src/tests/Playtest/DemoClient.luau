@@ -152,12 +152,13 @@ return function(net: any, combatState: any)
 		return fill, label
 	end
 
-	local staminaFill, staminaLabel = bar(24, Color3.fromRGB(90, 200, 120))
-	local dissonanceFill, dissonanceLabel = bar(52, BAND_COLORS[0])
+	local healthFill, healthLabel = bar(24, Color3.fromRGB(215, 70, 70))
+	local staminaFill, staminaLabel = bar(50, Color3.fromRGB(90, 200, 120))
+	local dissonanceFill, dissonanceLabel = bar(76, BAND_COLORS[0])
 	-- Band boundaries on the Dissonance bar: 40, 65, 85.
 	for _, at in { 40, 65, 85 } do
 		make("Frame", {
-			Position = UDim2.fromOffset(24 + 300 * at / 100, 50),
+			Position = UDim2.fromOffset(24 + 300 * at / 100, 74),
 			Size = UDim2.fromOffset(2, 24),
 			BackgroundColor3 = Color3.new(1, 1, 1),
 			BorderSizePixel = 0,
@@ -165,7 +166,7 @@ return function(net: any, combatState: any)
 		}, gui)
 	end
 	local bandLabel = make("TextLabel", {
-		Position = UDim2.fromOffset(24, 76),
+		Position = UDim2.fromOffset(24, 102),
 		Size = UDim2.fromOffset(360, 20),
 		BackgroundTransparency = 1,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -244,7 +245,7 @@ return function(net: any, combatState: any)
 	local help = make("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -20, 0, 20),
-		Size = UDim2.fromOffset(330, 176),
+		Size = UDim2.fromOffset(330, 192),
 		BackgroundTransparency = 0.4,
 		BackgroundColor3 = Color3.fromRGB(10, 10, 14),
 		TextColor3 = Color3.new(1, 1, 1),
@@ -517,6 +518,11 @@ return function(net: any, combatState: any)
 			return
 		end
 		local stamina = math.clamp(own.stamina / math.max(1, own.maxStamina), 0, 1)
+		local healthShare = math.clamp(own.health / math.max(1, own.maxHealth), 0, 1)
+		healthFill.Size = UDim2.fromScale(healthShare, 1)
+		healthLabel.Text = if own.state == "Dead"
+			then "Health  DEAD (respawning)"
+			else string.format("Health  %.0f / %.0f", own.health, own.maxHealth)
 		staminaFill.Size = UDim2.fromScale(stamina, 1)
 		staminaLabel.Text = string.format("Stamina  %.0f / %.0f", own.stamina, own.maxStamina)
 		local meter = own.dissonance or 0
@@ -540,6 +546,29 @@ return function(net: any, combatState: any)
 	local lastCast = 0
 	local fleeing = false
 	local runAutomaticCheck: () -> ()
+
+	-- Maps the server's own reason to a short, readable line.
+	local function explain(reason: string, status: any): string
+		local map = {
+			dead = "character is dead (wait to respawn, or press H)",
+			cooldown = "ability on cooldown",
+			["cannot afford"] = "not enough stamina",
+			["target out of range"] = "target out of range (20 studs)",
+			["target immune"] = "target is immune (boss)",
+			["target not in sight"] = "target blocked",
+			["no cant equipped"] = "Cant not equipped",
+			["incompatible cant"] = "Cant not equipped",
+			["already casting"] = "already casting",
+			busy = "busy (another action in progress)",
+			["target required"] = "invalid target (point at an enemy)",
+			["second target required"] = "invalid target (need a second enemy)",
+			["unknown target"] = "invalid target",
+			["target is dead"] = "invalid target (dead)",
+			["bad aim"] = "invalid aim point",
+			interrupted = "interrupted (staggered)",
+		}
+		return map[reason] or (reason .. " [" .. tostring(status) .. "]")
+	end
 
 	local function cast(verse: Verse)
 		if time() - lastCast < 0.15 then
@@ -584,12 +613,13 @@ return function(net: any, combatState: any)
 			if status == "OK" then
 				say(verse.name .. ": accepted")
 			else
-				-- The server deliberately gives no detail, so list the usual causes.
-				say(
-					verse.name
-						.. ": refused by the server (not enough stamina, no valid target "
-						.. "within 20 studs or line of sight, or a boss, which cannot be moved)"
-				)
+				-- Studio only: ask the harness for the reason the server logged.
+				-- Production results stay generic.
+				local detail = server("lastRefusal")
+				local reason = if type(detail) == "table"
+					then tostring(detail.reason)
+					else "unknown"
+				say(verse.name .. " refused: " .. explain(reason, status))
 			end
 		end)
 	end
@@ -608,6 +638,16 @@ return function(net: any, combatState: any)
 			fleeing = not fleeing
 			server("flee", fleeing)
 			say(if fleeing then "Enemies are running away (G to stop)" else "Enemies stopped")
+		elseif input.KeyCode == Enum.KeyCode.J then
+			local result = server("demoDamage", 25)
+			say(
+				if type(result) == "table" and result.dead
+					then "Took 25 test damage: you died"
+					else "Took 25 test damage"
+			)
+		elseif input.KeyCode == Enum.KeyCode.K then
+			server("demoDamage", 1000)
+			say("Test death: respawning. Press H to reset sooner.")
 		elseif input.KeyCode == Enum.KeyCode.H then
 			fleeing = false
 			server("demoReset")
@@ -722,6 +762,108 @@ return function(net: any, combatState: any)
 			"every ability shows a cooldown",
 			slots["near.no_farther"].cooldown.Text ~= "ready"
 				and slots["near.between_us"].cooldown.Text ~= "ready"
+		)
+		-- Health, death, reset and respawn ----------------------------------------
+		local function pollUntil(condition: () -> boolean, seconds: number): boolean
+			local began = time()
+			while time() - began < seconds do
+				if condition() then
+					return true
+				end
+				task.wait(0.1)
+			end
+			return condition()
+		end
+		local fullHealth = state3.health
+		check(
+			"casting four Verses cost no health",
+			fullHealth ~= nil and fullHealth == state0.health and fullHealth > 0,
+			fullHealth
+		)
+		check(
+			"the HUD shows full health, separate from stamina",
+			string.find(healthLabel.Text, "Health") ~= nil
+				and healthFill.Size.X.Scale > 0.99
+				and string.find(staminaLabel.Text, "Stamina") ~= nil,
+			healthLabel.Text
+		)
+		server("demoDamage", 25)
+		task.wait(0.5)
+		check(
+			"test damage lowers the health bar",
+			healthFill.Size.X.Scale < 0.99 and healthFill.Size.X.Scale > 0.5,
+			healthLabel.Text
+		)
+		server("demoDamage", 1000)
+		task.wait(0.6)
+		check(
+			"death shows on the HUD",
+			string.find(healthLabel.Text, "DEAD") ~= nil,
+			healthLabel.Text
+		)
+		local deadState = server("state")
+		check(
+			"the server says dead and the character is dead",
+			deadState.actionState == "Dead",
+			deadState.actionState
+		)
+		-- Casting while dead must be refused, with the real reason on screen.
+		task.wait(0.4)
+		autoAim = Vector3.new(0, 3, -30)
+		cast(VERSES[1])
+		check(
+			"a dead player is refused and the HUD says why",
+			pollUntil(function()
+				return string.find(message.Text, "dead") ~= nil
+			end, 3),
+			message.Text
+		)
+		-- H while dead: a new character and a new life.
+		server("demoReset")
+		check(
+			"H after death restores health",
+			pollUntil(function()
+				return string.find(healthLabel.Text, "DEAD") == nil
+					and healthFill.Size.X.Scale > 0.99
+			end, 5),
+			healthLabel.Text
+		)
+		local resetState = server("state")
+		check(
+			"H cleared Dissonance, cooldowns and the dead state",
+			resetState.actionState ~= "Dead"
+				and resetState.dissonance == 0
+				and resetState.closeStepCooldown == 0,
+			resetState.actionState
+		)
+		task.wait(0.5)
+		autoAim = Vector3.new(0, 3, -30)
+		cast(VERSES[1])
+		check(
+			"abilities work again after the reset",
+			pollUntil(function()
+				return string.find(message.Text, "accepted") ~= nil
+			end, 3),
+			message.Text
+		)
+		-- Natural respawn, without pressing H.
+		task.wait(1)
+		server("demoDamage", 1000)
+		local respawned = pollUntil(function()
+			local s = server("state")
+			return s ~= nil and s.actionState ~= "Dead" and s.health ~= nil and s.health > 0
+		end, 15)
+		check("the player respawns on their own and is alive", respawned)
+		task.wait(1)
+		autoAim = Vector3.new(0, 3, -30)
+		message.Text = ""
+		cast(VERSES[1])
+		check(
+			"abilities work after a natural respawn",
+			pollUntil(function()
+				return string.find(message.Text, "accepted") ~= nil
+			end, 3),
+			message.Text
 		)
 		print(string.format("[PT] DONE passed=%d failed=%d", passedChecks, failedChecks))
 		server("done", { passed = passedChecks, failed = failedChecks })

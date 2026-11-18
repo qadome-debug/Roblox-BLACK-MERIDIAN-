@@ -197,11 +197,13 @@ rojo build playtest-demo.project.json -o BlackMeridianDemo.rbxl
 | R | Between Us | Tether the two enemies nearest the cursor (one enemy: tethered to you) |
 | F | No Farther | A 10-stud zone at the cursor that halves movement away from its centre |
 | G | | Enemies run away on or off, to see No Farther work |
-| H | | Reset enemies, stamina, Dissonance and position |
+| H | | Full reset: new life if dead, health, stamina, Dissonance, cooldowns, enemies, position |
+| J | | Take 25 test damage (server applies it) |
+| K | | Test death: you die, then respawn and can cast again |
 
 Blue enemies are normal, orange is an elite (pulled half the distance), red
-is a boss (cannot be pulled or tethered, not slowed). The HUD shows stamina,
-the Dissonance meter with its band, and a cooldown for each ability.
+is a boss (cannot be pulled or tethered, not slowed). The HUD shows health,
+stamina, the Dissonance meter with its band, and a cooldown for each ability.
 
 Every Verse is a real `VerseCast` request judged by the server, and Nearness
 is equipped with a real `CantEquip` request. The harness only stands in for

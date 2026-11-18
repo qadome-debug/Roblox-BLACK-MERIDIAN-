@@ -116,6 +116,18 @@ without new work in those tasks.
 
 The exact information needed for each is in `docs/design-requests.md`.
 
+## Demo bug: abilities stopped for good, 2026-11-18
+
+Root cause: a player combatant that died stayed `Dead` forever. Nothing
+revived it when the character respawned (`Bootstrap` only added the
+combatant once), the Humanoid and the combat state were never linked, and
+the demo's H reset refilled stamina but could not revive. Every Verse was
+then refused with reason `dead`. Fixed: `Simulation:revive`,
+`CombatService:respawnPlayer/killPlayer/isDead`, an `onPlayerDied` hook, a
+respawn on each new character, and a real H reset. Regression tests in
+`Unit/Lifecycle.test.luau`; Studio demo auto run 24/24. Gameplay acceptance
+stays open.
+
 ## Verse effects, Dissonance amounts and IDs 2026-11-16 (later)
 
 Approved by the designer: the six machine IDs, the initial balancing

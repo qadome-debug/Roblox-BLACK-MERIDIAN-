@@ -55,6 +55,7 @@ export type Layer = {
 	moves: (self: Layer, id: string) -> number,
 	tick: (self: Layer) -> (),
 	forget: (self: Layer, id: string) -> (),
+	reset: (self: Layer, id: string) -> (),
 }
 
 local BurdenEffects = {}
@@ -159,6 +160,15 @@ function BurdenEffects.attach(sim: Simulation.Simulation, deps: Deps): Layer
 
 	function layer:forget(id: string)
 		release(id)
+	end
+
+	-- Clears the temporary penalty (the Burden itself stays chosen).
+	function layer:reset(id: string)
+		local state = states[id]
+		if state ~= nil then
+			state.moves = 0
+			apply(id, state)
+		end
 	end
 
 	return table.freeze(layer) :: any

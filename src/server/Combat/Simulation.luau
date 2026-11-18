@@ -91,6 +91,10 @@ export type Simulation = {
 	-- Raw health loss with the death transition. Damage resolution
 	-- (BM-056) computes the amount; nothing else calls this.
 	damage: (self: Simulation, id: string, amount: number) -> number,
+	-- Brings a combatant back at full health, stamina and posture, idle and
+	-- with no queued intents. The only way out of "Dead". Returns false for
+	-- an unknown id. Callers decide when a revive is legitimate (a respawn).
+	revive: (self: Simulation, id: string) -> boolean,
 	onActive: (self: Simulation, listener: ActiveListener) -> (),
 	-- Called at the end of every step (AI, targeting, replication).
 	onStep: (self: Simulation, listener: (step: number) -> ()) -> (),
@@ -413,6 +417,18 @@ function Simulation.new(deps: Deps): Simulation
 			emit("died", id)
 		end
 		return applied
+	end
+
+	function sim:revive(id: string): boolean
+		local combatant = combatants[id]
+		if combatant == nil then
+			return false
+		end
+		combatant.resources = Resources.new(combatant.derived)
+		combatant.action = ActionMachine.new()
+		combatant.pending = {}
+		emit("revived", id)
+		return true
 	end
 
 	function sim:onActive(listener: ActiveListener)

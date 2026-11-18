@@ -83,6 +83,9 @@ export type Deps = {
 	chosenBurden: ((userId: number) -> string?)?,
 	masteryUnlocked: ((userId: number) -> boolean)?,
 	onRupture: ((combatantId: string) -> ())?,
+	-- Called once each time a player's combatant dies, so the world can
+	-- kill the character to match. Never called for enemies.
+	onPlayerDied: ((userId: number) -> ())?,
 }
 
 export type PlayerSpec = {
@@ -107,6 +110,14 @@ export type EnemySpec = {
 export type Service = {
 	addPlayer: (self: Service, userId: number, spec: PlayerSpec?) -> (),
 	removePlayer: (self: Service, userId: number) -> (),
+	-- A new life: full health, stamina and posture, idle, and every
+	-- temporary effect cleared (cooldowns, Dissonance, tethers and zones,
+	-- the Burden penalty, the lock-on). The equipped Cant stays. The only
+	-- way a dead player can act again.
+	respawnPlayer: (self: Service, userId: number) -> boolean,
+	-- The character died in the world (fall, void): the combatant dies too.
+	killPlayer: (self: Service, userId: number) -> (),
+	isDead: (self: Service, userId: number) -> boolean,
 	hasPlayer: (self: Service, userId: number) -> boolean,
 	combatantId: (self: Service, userId: number) -> string,
 	-- Queues a validated intent; the only client-reachable mutation.
@@ -267,7 +278,21 @@ function CombatService.new(deps: Deps): Service
 	end)
 
 	local players: { [number]: boolean } = {}
+	local deathReported: { [number]: boolean } = {}
 	local lastRevisionSent: { [number]: number } = {}
+	-- Reports each player death once, whoever caused it.
+	sim:onStep(function()
+		local report = deps.onPlayerDied
+		for userId in players do
+			local c = sim:get(playerId(userId))
+			if c ~= nil and (c.action.state :: string) == "Dead" and not deathReported[userId] then
+				deathReported[userId] = true
+				if report ~= nil then
+					report(userId)
+				end
+			end
+		end
+	end)
 	local sinceReplicate = 0
 
 	local service = {} :: Service
@@ -321,11 +346,45 @@ function CombatService.new(deps: Deps): Service
 		log("debug", "combat_player_added", userId)
 	end
 
+	function service:isDead(userId: number): boolean
+		local c = sim:get(playerId(userId))
+		return c ~= nil and (c.action.state :: string) == "Dead"
+	end
+
+	function service:killPlayer(userId: number)
+		local c = sim:get(playerId(userId))
+		if players[userId] and c ~= nil then
+			sim:damage(playerId(userId), c.derived.maxHealth)
+			log("info", "combat_player_killed", userId)
+		end
+	end
+
+	function service:respawnPlayer(userId: number): boolean
+		if not players[userId] then
+			return false
+		end
+		local id = playerId(userId)
+		local wasDead = service:isDead(userId)
+		sim:revive(id)
+		verses:forget(id)
+		dissonance:forget(id)
+		if verseEffects ~= nil then
+			verseEffects:forget(id)
+		end
+		burdens:reset(id)
+		targeting:request(id, nil)
+		deathReported[userId] = nil
+		lastRevisionSent[userId] = nil
+		log("info", "combat_player_respawned", userId, { wasDead = wasDead })
+		return true
+	end
+
 	function service:removePlayer(userId: number)
 		if not players[userId] then
 			return
 		end
 		players[userId] = nil
+		deathReported[userId] = nil
 		lastRevisionSent[userId] = nil
 		cants:forget(playerId(userId))
 		burdens:forget(playerId(userId))

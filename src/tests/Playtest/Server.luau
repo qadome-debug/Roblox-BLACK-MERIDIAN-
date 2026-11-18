@@ -88,6 +88,21 @@ function Playtest.start(services: { [string]: any })
 		return
 	end
 
+	-- Studio diagnostics: the real rejection reason per player, from the
+	-- server log, never sent through the production result.
+	local lastRefusal: { [number]: { [string]: any } } = {}
+	if services.logger ~= nil then
+		services.logger:addSink(function(event)
+			if event.event == "request_rejected" and event.playerId ~= nil then
+				lastRefusal[event.playerId] = {
+					action = event.fields.action,
+					reason = event.fields.reason,
+					status = event.fields.status,
+				}
+			end
+		end)
+	end
+
 	local function state(player: Player): { [string]: any }
 		local userId = player.UserId
 		local profile = profiles:profileFor(userId)
@@ -294,14 +309,17 @@ function Playtest.start(services: { [string]: any })
 					then "immune"
 					elseif kind == "elite" then "elite"
 					else "normal",
+				-- Training dummies. The AI limits make 1 the smallest aggro and
+				-- attack range and 3000 the longest attack cooldown, so they also
+				-- have no attack power: whatever they do, they deal no damage and
+				-- the demo player cannot be killed by them.
+				modifiers = { { id = "demo_dummy", stat = "attackPower", add = -1000 } },
 				profile = {
-					-- Training dummies: never aggro and never attack, so the
-					-- demo player cannot be killed while testing Verses.
-					aggroRange = 0,
-					attackRange = 0,
+					aggroRange = 1,
+					attackRange = 1,
 					leashRange = 2000,
 					maxPathFailures = 3,
-					attackCooldownSteps = 1000000,
+					attackCooldownSteps = 3000,
 					attackJitterSteps = 0,
 					repathSteps = 10,
 				},
@@ -431,13 +449,54 @@ function Playtest.start(services: { [string]: any })
 		return { ok = granted.ok and verses.ok }
 	end
 
+	-- Studio-only. A full return to a valid start through the same paths a
+	-- real respawn uses: a dead character is reloaded (which gives a new
+	-- combat life); a living one gets the new life directly. Never a client
+	-- remote in production: this whole file is excluded from production.
 	commands.demoReset = function(player)
-		commands.refill(player, nil)
-		commands.resetDissonance(player, nil)
+		local userId = player.UserId
+		local character = player.Character
+		local humanoid = if character ~= nil
+			then character:FindFirstChildOfClass("Humanoid")
+			else nil
+		local needsNewCharacter = humanoid == nil or humanoid.Health <= 0 or combat:isDead(userId)
 		table.clear(drifts)
+		if needsNewCharacter then
+			player:LoadCharacter()
+			local fresh = player.Character or player.CharacterAdded:Wait()
+			fresh:WaitForChild("HumanoidRootPart", 10)
+			-- Bootstrap's CharacterAdded handler revives the combatant.
+			for _ = 1, 40 do
+				if not combat:isDead(userId) then
+					break
+				end
+				task.wait(0.05)
+			end
+		end
+		combat:respawnPlayer(userId)
+		local alive = player.Character ~= nil
+				and player.Character:FindFirstChildOfClass("Humanoid") :: Humanoid?
+			or nil
+		if alive ~= nil then
+			alive.Health = alive.MaxHealth
+		end
 		commands.setupEnemies(player, DEMO_ENEMIES)
 		commands.teleport(player, { x = 0, z = 0 })
-		return { ok = true }
+		return { ok = not combat:isDead(userId), dead = combat:isDead(userId) }
+	end
+
+	-- Studio-only test damage, applied by the server through the same
+	-- simulation call enemy hits use (no client value is trusted).
+	commands.demoDamage = function(player, amount)
+		local value = if type(amount) == "number" then math.clamp(amount, 0, 1000) else 25
+		local applied = combat.sim:damage(combat:combatantId(player.UserId), value)
+		return { ok = true, applied = applied, dead = combat:isDead(player.UserId) }
+	end
+
+	-- The last refusal the server logged for this player, so the demo HUD
+	-- can say why. The real reason stays out of the production responses.
+	commands.lastRefusal = function(player)
+		return lastRefusal[player.UserId] or { reason = "none" }
 	end
 
 	-- Makes every enemy run away from the player at 4 studs per second, so

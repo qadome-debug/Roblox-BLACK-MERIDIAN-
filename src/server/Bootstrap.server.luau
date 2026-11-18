@@ -228,6 +228,18 @@ local combat = CombatService.new({
 	teleport = function(userId, to)
 		return characters:teleport(userId, to)
 	end,
+	-- The combat state is the truth about life and death: when it says dead,
+	-- the character dies too, so the player respawns and gets a new life.
+	onPlayerDied = function(userId)
+		local player = Players:GetPlayerByUserId(userId)
+		local character = if player ~= nil then player.Character else nil
+		local humanoid = if character ~= nil
+			then character:FindFirstChildOfClass("Humanoid")
+			else nil
+		if humanoid ~= nil and humanoid.Health > 0 then
+			humanoid.Health = 0
+		end
+	end,
 	poseOf = function(userId)
 		local snapshot = characters:sample(userId)
 		local root: BasePart? = rootParts[userId]
@@ -270,10 +282,16 @@ local function onCharacterAdded(player: Player, character: Model)
 	if humanoid ~= nil then
 		humanoid.Died:Connect(function()
 			characters:onDied(player.UserId)
+			-- A fall or void death also ends the combat life.
+			combat:killPlayer(player.UserId)
 		end)
 	end
 	if not combat:hasPlayer(player.UserId) then
 		combat:addPlayer(player.UserId)
+	else
+		-- A new character is a new life. Without this the combatant stays
+		-- "Dead" forever and every ability is refused.
+		combat:respawnPlayer(player.UserId)
 	end
 	if restoreLoadout ~= nil then
 		restoreLoadout(player.UserId)
