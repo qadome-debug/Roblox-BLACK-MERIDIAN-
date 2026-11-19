@@ -9,7 +9,7 @@
 --   R  Between Us    tether the two enemies nearest the cursor
 --                    (one enemy: it is tethered to you)
 --   F  No Farther    zone at the cursor that slows enemies inside (to 40%)
---   G  toggle        enemies run away (to see No Farther work)
+--   G  toggle        enemies run away fast; pink glow = slowed by F
 --   H  reset         enemies, stamina, Dissonance, position
 --
 -- Everything goes through the real client Net controller: each Verse is a

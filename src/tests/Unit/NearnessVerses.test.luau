@@ -498,6 +498,26 @@ suite:case("No Farther slows all movement inside its 20-stud zone, only for enem
 	Assert.equal(caster.position.x, 3, "so does the caster")
 end)
 
+suite:case("No Farther: a fast runner is visibly slowed and flagged as slowed", function(env)
+	local h = harness(env)
+	local runner = h.enemy("run", 18, 0)
+	local free = h.enemy("free", 80, 0)
+	h.cast("near.no_farther", nil, { aim = Vec3.new(15, 3, 0) })
+	h.step(15)
+	Assert.isTrue(effects(h):isSlowed("run"), "flagged while inside")
+	Assert.isFalse(effects(h):isSlowed("free"), "not flagged outside")
+	-- 16 studs a second (a real enemy's speed) for one second.
+	local start, freeStart = runner.position.x, free.position.x
+	for _ = 1, 35 do
+		runner.position = Vec3.new(runner.position.x + 16 / 35, 3, 0)
+		free.position = Vec3.new(free.position.x + 16 / 35, 3, 0)
+		h.step(1)
+	end
+	local ran = runner.position.x - start
+	Assert.isTrue(ran < 8, "16 studs became about 6.4 (" .. ran .. ")")
+	Assert.isTrue(free.position.x - freeStart > 15.9, "outside it runs the full 16")
+end)
+
 suite:case(
 	"No Farther lasts 5 seconds, is placed within range and stops at walls, and spares bosses",
 	function(env)

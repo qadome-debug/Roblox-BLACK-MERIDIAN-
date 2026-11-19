@@ -390,3 +390,5 @@ Owner decision: H in the Studio demo fully resets health, stamina, Dissonance an
 ### No Farther made a real slow, demo dummies stop following, 2026-11-18
 
 Hands-on feedback: enemies walked through got stuck to the player and followed; No Farther was hard to tell apart. Causes: (1) demo dummies had aggroRange 1 and leashRange 2000, so passing within 1 stud woke them and they chased forever (no damage, as designed). Now leashRange 1: they give up and go home. Regression test added (fails with the old value). (2) No Farther only halved movement AWAY from the centre. Owner asked for a bigger, clearly slower zone: radius 10 -> 20, all movement inside (any direction) at 40% speed (`slowScale = 0.4`, replaces `awayScale`). Tuning values are provisional and in `NearnessTuning.luau`; bosses, teammates and the caster stay unaffected; forced pulls and tethers are not slowed. check-all 17 steps. Studio re-check pending the owner test.
+
+Follow-up: with the demo flee at 4 studs/s a 60% slow was hard to see. The flee speed is now 16 (a real enemy speed) and enemies inside a No Farther zone glow pink (read-only `VerseEffects:isSlowed`). Test added.

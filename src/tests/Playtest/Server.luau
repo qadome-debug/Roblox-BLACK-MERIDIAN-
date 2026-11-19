@@ -40,6 +40,7 @@ local ENEMY_ID = "pt-enemy"
 -- and follow the simulation every frame. They are scaffolding: the game has
 -- no enemy models yet.
 local demoEnemies: { [string]: Part } = {}
+local baseColor: { [string]: Color3 } = {}
 local drifts: { [string]: { x: number, z: number } } = {}
 
 -- The hands-on demo (playtest-demo.project.json): targets for the four
@@ -341,6 +342,7 @@ function Playtest.start(services: { [string]: any })
 				else Color3.fromRGB(90, 160, 220)
 			body:SetAttribute("CombatId", spec.id)
 			body.Parent = dynamicFolder()
+			baseColor[spec.id] = body.Color
 			demoEnemies[spec.id] = body
 		end
 		return { ok = true }
@@ -510,7 +512,7 @@ function Playtest.start(services: { [string]: any })
 		return lastRefusal[player.UserId] or { reason = "none" }
 	end
 
-	-- Makes every enemy run away from the player at 4 studs per second, so
+	-- Makes every enemy run away from the player at 16 studs per second, so
 	-- No Farther can be seen slowing them. Harness only.
 	commands.flee = function(player, on)
 		local me = combat.sim:get(combat:combatantId(player.UserId))
@@ -519,7 +521,9 @@ function Playtest.start(services: { [string]: any })
 			if on and me ~= nil and c ~= nil and c.extra.displacement ~= "immune" then
 				local dx, dz = c.position.x - me.position.x, c.position.z - me.position.z
 				local length = math.max(0.001, math.sqrt(dx * dx + dz * dz))
-				drifts[id] = { x = dx / length * 4, z = dz / length * 4 }
+				-- 16 studs a second is a real enemy's move speed, so the 60% slow
+				-- is plainly visible (16 -> 6.4).
+				drifts[id] = { x = dx / length * 16, z = dz / length * 16 }
 			else
 				drifts[id] = nil
 			end
@@ -550,6 +554,12 @@ function Playtest.start(services: { [string]: any })
 			local c = combat.sim:get(id)
 			if c ~= nil then
 				body.Position = Vector3.new(c.position.x, c.position.y - 0.5, c.position.z)
+				-- Enemies inside a No Farther zone glow hot pink, so the slow can
+				-- be told apart at a glance.
+				local slowed = combat.verseEffects ~= nil and combat.verseEffects:isSlowed(id)
+				body.Color = if slowed
+					then Color3.fromRGB(255, 60, 160)
+					else baseColor[id] or body.Color
 			end
 		end
 	end)

@@ -60,6 +60,8 @@ export type Layer = {
 	tick: (self: Layer, step: number) -> (),
 	forget: (self: Layer, id: string) -> (),
 	counts: (self: Layer) -> { pulls: number, tethers: number, zones: number },
+	-- True while an enemy-of-the-caster is inside a zone that slows it (read only).
+	isSlowed: (self: Layer, id: string) -> boolean,
 }
 
 local VerseEffects = {}
@@ -446,6 +448,25 @@ function VerseEffects.attach(sim: Simulation.Simulation, deps: Deps): Layer
 				pull.stepsLeft = 0
 			end
 		end
+	end
+
+	function layer:isSlowed(id: string): boolean
+		local c = sim:get(id)
+		if not alive(c) then
+			return false
+		end
+		local subject = c :: Combatant
+		for _, zone in zones do
+			if
+				id ~= zone.caster
+				and subject.team ~= zone.team
+				and (zone.affectsBosses or not Verses.isImmune(subject))
+				and Vec3.flatDistance(subject.position, zone.center) <= zone.radius
+			then
+				return true
+			end
+		end
+		return false
 	end
 
 	function layer:counts()
